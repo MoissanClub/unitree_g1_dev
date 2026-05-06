@@ -5,6 +5,7 @@ This folder contains helper scripts intended to be copied to the Unitree G1 PC2 
 Currently included:
 
 - `g1_pc2_wifi_setup.sh`: configure Wi-Fi on PC2 using NetworkManager.
+- `g1_pc2_boot_time_sync_setup.sh`: install a one-shot boot-time clock sync service.
 
 ## Typical Workflow
 
@@ -92,9 +93,37 @@ sudo ./g1_pc2_wifi_setup.sh \
   --yes
 ```
 
+## Optional: Install Boot-Time Clock Sync
+
+PC2 does not need a persistent NTP daemon if you want to keep background
+services to a minimum. This installer adds a one-shot `systemd` service that
+waits for networking at boot, fetches an HTTP `Date` header from a small list
+of public endpoints, sets the system clock once, then exits.
+
+Show help:
+
+```bash
+sudo ./g1_pc2_boot_time_sync_setup.sh --help
+```
+
+Install it:
+
+```bash
+sudo ./g1_pc2_boot_time_sync_setup.sh --yes
+```
+
+Test it immediately after install:
+
+```bash
+sudo systemctl start g1-pc2-sync-clock.service
+sudo systemctl status --no-pager g1-pc2-sync-clock.service
+sudo journalctl -u g1-pc2-sync-clock.service -b --no-pager
+```
+
 ## Notes
 
 - Run the script on PC2, not on your development machine.
 - Use `sudo`; the script modifies NetworkManager and may install a boot-time service.
 - The script does not explicitly bring wired Ethernet down, but Wi-Fi can become the preferred default route for outbound traffic.
 - By default, the script refuses Wi-Fi static addresses in `192.168.123.0/24` to avoid conflict with the Unitree Ethernet side.
+- The boot-time clock sync uses public HTTP endpoints for rough time correction. It is intended to limit drift, not provide authenticated secure time.
