@@ -25,8 +25,6 @@ DNS="$DEFAULT_DNS"
 DNS_EXPLICIT=0
 IFACE=""
 CONN_NAME="g1-pc2-wifi"
-DATE_ARG=""
-HTTP_DATE=1
 FIX_RESOLV=0
 INSTALL_BOOT_SERVICE=1
 ENABLE_NM_BOOT=0
@@ -47,7 +45,7 @@ Common examples:
   sudo ./g1_pc2_wifi_setup.sh \
     --ssid "LabWiFi" --ask-password \
     --ip 10.10.20.164/24 --gateway 10.10.20.1 --dns 1.1.1.1,8.8.8.8 \
-    --date "2026-05-06 14:30:00" --yes
+    --yes
 
   # DHCP Wi-Fi, if your AP/router provides DHCP:
   sudo ./g1_pc2_wifi_setup.sh --ssid "LabWiFi" --ask-password --yes
@@ -66,8 +64,6 @@ Options:
   --dns LIST                     Comma-separated DNS servers. Default for static: 1.1.1.1,8.8.8.8.
   --iface IFACE                  Wi-Fi interface. Autodetects if omitted, usually wlan0.
   --connection-name NAME         NetworkManager profile name. Default: g1-pc2-wifi.
-  --date "YYYY-MM-DD HH:MM:SS"   Set PC2 clock before networking/package work.
-  --no-http-date                 Do not try to set clock from an HTTP Date header after connecting.
   --fix-resolv-conf              If DNS lookup fails, write /etc/resolv.conf with --dns servers.
   --no-boot-service              Do not install the one-shot boot unblock/connect service.
   --enable-networkmanager-at-boot Enable NetworkManager service at boot.
@@ -131,8 +127,6 @@ while [[ $# -gt 0 ]]; do
     --dns) need_value "$1" "${2:-}"; DNS="$2"; DNS_EXPLICIT=1; shift 2 ;;
     --iface) need_value "$1" "${2:-}"; IFACE="$2"; shift 2 ;;
     --connection-name) need_value "$1" "${2:-}"; CONN_NAME="$2"; shift 2 ;;
-    --date|--set-date) need_value "$1" "${2:-}"; DATE_ARG="$2"; shift 2 ;;
-    --no-http-date) HTTP_DATE=0; shift ;;
     --fix-resolv-conf) FIX_RESOLV=1; shift ;;
     --no-boot-service) INSTALL_BOOT_SERVICE=0; shift ;;
     --enable-networkmanager-at-boot) ENABLE_NM_BOOT=1; shift ;;
@@ -217,19 +211,6 @@ This should not change PC2's wired 192.168.123.164 connection.
 EOF
   read -r -p "Continue? [y/N] " ans
   [[ "$ans" =~ ^[Yy]$ ]] || die "Cancelled."
-}
-
-set_clock_if_requested() {
-  if [[ -n "$DATE_ARG" ]]; then
-    log "Setting system clock to: $DATE_ARG"
-    run date -s "$DATE_ARG"
-  else
-    local year
-    year="$(date +%Y 2>/dev/null || echo 1970)"
-    if [[ "$year" -lt 2024 || "$year" -gt 2035 ]]; then
-      warn "System clock looks wrong: $(date 2>/dev/null || true). Re-run with --date 'YYYY-MM-DD HH:MM:SS' if apt/TLS complain."
-    fi
-  fi
 }
 
 ensure_networkmanager() {
@@ -396,23 +377,6 @@ write_resolv_conf_if_requested() {
   fi
 }
 
-sync_clock_from_http_date() {
-  [[ "$HTTP_DATE" -eq 1 ]] || return 0
-  command -v curl >/dev/null 2>&1 || { warn "curl not found; skipping HTTP Date clock sync."; return 0; }
-
-  # Plain HTTP avoids TLS certificate failures when the local clock is wrong.
-  local url hdr
-  for url in http://1.1.1.1/ http://neverssl.com/ http://connectivity-check.ubuntu.com/; do
-    hdr="$(curl -fsSI --connect-timeout 3 --max-time 6 "$url" 2>/dev/null | tr -d '\r' | awk 'BEGIN{IGNORECASE=1} /^date:/ {sub(/^date:[[:space:]]*/, "", $0); print; exit}')"
-    if [[ -n "$hdr" ]]; then
-      log "Setting clock from HTTP Date header: $hdr"
-      run date -u -s "$hdr" || warn "Failed to set date from HTTP header."
-      return 0
-    fi
-  done
-  warn "Could not obtain HTTP Date header; clock left as: $(date 2>/dev/null || true)"
-}
-
 check_connectivity() {
   [[ "$SCAN_ONLY" -eq 1 ]] && return 0
 
@@ -483,13 +447,11 @@ main() {
   ensure_networkmanager
   detect_wifi_iface
   confirm_if_needed
-  set_clock_if_requested
   unblock_wifi
   scan_wifi
   configure_connection
   activate_connection
   check_connectivity
-  sync_clock_from_http_date
   install_boot_service
 
   if [[ "$SCAN_ONLY" -eq 1 ]]; then
