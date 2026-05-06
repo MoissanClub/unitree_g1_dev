@@ -403,6 +403,26 @@ check_connectivity() {
   fi
 }
 
+show_final_wlan_summary() {
+  [[ "$SCAN_ONLY" -eq 1 ]] && return 0
+
+  local wlan_ip wifi_mac
+  wlan_ip="$(ip -4 -o addr show dev "$IFACE" 2>/dev/null | awk '{print $4; exit}')"
+  wifi_mac="$(cat "/sys/class/net/$IFACE/address" 2>/dev/null || true)"
+
+  if [[ -n "$wlan_ip" ]]; then
+    log "WLAN IPv4 on $IFACE: $wlan_ip"
+  else
+    warn "Could not determine the current WLAN IPv4 address on $IFACE."
+  fi
+
+  if [[ -n "$wifi_mac" ]]; then
+    log "Recommendation: on the Wi-Fi router, create a permanent DHCP reservation for MAC $wifi_mac so PC2 keeps a stable WLAN IP."
+  else
+    log "Recommendation: on the Wi-Fi router, create a permanent DHCP reservation for this Wi-Fi interface's MAC address so PC2 keeps a stable WLAN IP."
+  fi
+}
+
 install_boot_service() {
   [[ "$INSTALL_BOOT_SERVICE" -eq 1 ]] || return 0
   [[ "$SCAN_ONLY" -eq 0 ]] || return 0
@@ -453,6 +473,7 @@ main() {
   activate_connection
   check_connectivity
   install_boot_service
+  show_final_wlan_summary
 
   if [[ "$SCAN_ONLY" -eq 1 ]]; then
     log "Scan complete."
