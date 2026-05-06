@@ -114,11 +114,30 @@ EOF
   [[ "$ans" =~ ^[Yy]$ ]] || die "Cancelled."
 }
 
-warn_if_persistent_time_daemon_present() {
+running_time_sync_service() {
   local svc
   for svc in systemd-timesyncd.service chronyd.service chrony.service ntp.service ntpd.service; do
-    if systemctl is-enabled "$svc" >/dev/null 2>&1 || systemctl is-active "$svc" >/dev/null 2>&1; then
-      warn "$svc appears enabled or active. This installer does not disable it automatically."
+    if systemctl is-active "$svc" >/dev/null 2>&1; then
+      printf '%s\n' "$svc"
+      return 0
+    fi
+  done
+  return 1
+}
+
+skip_if_time_sync_service_running() {
+  local svc
+  if svc="$(running_time_sync_service)"; then
+    log "$svc is already running. Skipping installation of the one-shot boot-time clock sync service."
+    exit 0
+  fi
+}
+
+warn_if_persistent_time_daemon_enabled() {
+  local svc
+  for svc in systemd-timesyncd.service chronyd.service chrony.service ntp.service ntpd.service; do
+    if systemctl is-enabled "$svc" >/dev/null 2>&1; then
+      warn "$svc is enabled. This installer does not disable it automatically."
     fi
   done
 }
@@ -247,8 +266,9 @@ EOF
 main() {
   validate_args
   require_cmds
+  skip_if_time_sync_service_running
   confirm_if_needed
-  warn_if_persistent_time_daemon_present
+  warn_if_persistent_time_daemon_enabled
   write_helper_script
   write_service
   enable_service
