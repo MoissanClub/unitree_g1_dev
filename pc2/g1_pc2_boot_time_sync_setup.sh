@@ -27,6 +27,7 @@ What it installs:
 
 Behavior:
   - Runs once at boot after network-online.target.
+  - Retries for a bounded window while Wi-Fi/internet comes up.
   - Fetches an HTTP Date header from a small list of public endpoints.
   - Sets the system clock, then exits.
   - Does not enable an always-on NTP daemon.
@@ -154,6 +155,8 @@ write_helper_script() {
 set -Eeuo pipefail
 
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SYNC_WAIT_SECONDS="${SYNC_WAIT_SECONDS:-45}"
+SYNC_RETRY_INTERVAL_SECONDS="${SYNC_RETRY_INTERVAL_SECONDS:-3}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%F %T' 2>/dev/null || true)" "$*"
@@ -191,21 +194,31 @@ get_http_date() {
 main() {
   command -v curl >/dev/null 2>&1 || { warn "curl not found; skipping boot-time clock sync."; exit 0; }
 
-  local hdr before after
+  local hdr before after deadline now
   before="$(date -u '+%F %T UTC' 2>/dev/null || true)"
+  deadline=$(( $(date +%s) + SYNC_WAIT_SECONDS ))
 
-  if hdr="$(get_http_date)"; then
-    log "Setting clock from HTTP Date header: $hdr"
-    if date -u -s "$hdr" >/dev/null 2>&1; then
-      after="$(date -u '+%F %T UTC' 2>/dev/null || true)"
-      log "Clock updated: $before -> $after"
+  while true; do
+    if hdr="$(get_http_date)"; then
+      log "Setting clock from HTTP Date header: $hdr"
+      if date -u -s "$hdr" >/dev/null 2>&1; then
+        after="$(date -u '+%F %T UTC' 2>/dev/null || true)"
+        log "Clock updated: $before -> $after"
+        exit 0
+      fi
+      warn "Failed to set clock from HTTP Date header: $hdr"
       exit 0
     fi
-    warn "Failed to set clock from HTTP Date header: $hdr"
-    exit 0
-  fi
 
-  warn "Could not obtain an HTTP Date header from any configured source."
+    now="$(date +%s)"
+    if (( now >= deadline )); then
+      break
+    fi
+
+    sleep "$SYNC_RETRY_INTERVAL_SECONDS"
+  done
+
+  warn "Could not obtain an HTTP Date header from any configured source within ${SYNC_WAIT_SECONDS}s."
 }
 
 main "$@"
@@ -230,6 +243,7 @@ After=network-online.target NetworkManager.service g1-pc2-wifi.service
 [Service]
 Type=oneshot
 TimeoutStartSec=${WAIT_ONLINE_SECONDS}
+Environment=SYNC_WAIT_SECONDS=${WAIT_ONLINE_SECONDS}
 ExecStart=$HELPER_PATH
 RemainAfterExit=no
 
