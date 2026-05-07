@@ -7,7 +7,7 @@
 #   - stable /dev/serial/by-id ROS2 config
 #   - optional Unitree ROS2 and G1 URDF checks
 
-set -euo pipefail
+set -eo pipefail
 shopt -s nullglob
 
 REPO_URL="https://github.com/BrainCoTech/unitree-g1-brainco-hand.git"
@@ -118,23 +118,6 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing command '$1'. Install it and rerun."
 }
 
-source_setup_file() {
-  # ROS2/ament and conda setup scripts are not always safe under `set -u`.
-  # Temporarily disable nounset only while sourcing them, then restore it.
-  local file="$1"
-  local nounset_was_on=0
-  case "$-" in
-    *u*) nounset_was_on=1; set +u ;;
-  esac
-  # shellcheck disable=SC1090
-  source "$file"
-  local rc=$?
-  if [[ "$nounset_was_on" == "1" ]]; then
-    set -u
-  fi
-  return "$rc"
-}
-
 install_apt_deps() {
   [[ "$SKIP_APT" == "1" ]] && return 0
   log "Installing/checking apt packages..."
@@ -182,19 +165,19 @@ clone_or_update_repo() {
 conda_shell_setup() {
   if command -v conda >/dev/null 2>&1; then
     # shellcheck disable=SC1091
-    source_setup_file "$(conda info --base)/etc/profile.d/conda.sh"
+    source "$(conda info --base)/etc/profile.d/conda.sh"
     return 0
   fi
 
   if [[ -f "${HOME}/miniconda3/etc/profile.d/conda.sh" ]]; then
     # shellcheck disable=SC1091
-    source_setup_file "${HOME}/miniconda3/etc/profile.d/conda.sh"
+    source "${HOME}/miniconda3/etc/profile.d/conda.sh"
     return 0
   fi
 
   if [[ -f "${HOME}/anaconda3/etc/profile.d/conda.sh" ]]; then
     # shellcheck disable=SC1091
-    source_setup_file "${HOME}/anaconda3/etc/profile.d/conda.sh"
+    source "${HOME}/anaconda3/etc/profile.d/conda.sh"
     return 0
   fi
 
@@ -254,7 +237,8 @@ ensure_unitree_ros2() {
 
   (
     # shellcheck disable=SC1091
-    source_setup_file /opt/ros/foxy/setup.bash
+    set +u
+    source /opt/ros/foxy/setup.bash
     cd "${UNITREE_ROS2_DIR}/cyclonedds_ws"
     colcon build
   )
@@ -639,6 +623,56 @@ PY
   fi
 }
 
+patch_launch_scripts() {
+  log "Patching BrainCo launch scripts to source Unitree + BrainCo + Stark environments..."
+
+  cat > "${BASE_DIR}/brainco_ws/launch/launch_robot.sh" <<EOF
+#!/usr/bin/env bash
+set -eo pipefail
+
+if command -v conda >/dev/null 2>&1; then
+  source "\$(conda info --base)/etc/profile.d/conda.sh"
+  conda activate "${CONDA_ENV}"
+fi
+
+# ROS/Unitree setup files can reference unset variables, so keep nounset disabled.
+set +u
+source "${UNITREE_ROS2_DIR}/setup.sh"
+source "${BASE_DIR}/brainco_ws/install/setup.bash"
+source "${BASE_DIR}/ros2_stark_ws/install/setup.bash"
+
+# Keep immediate USB access working even before a reboot/log-in refresh.
+for p in /dev/ttyUSB* /dev/ttyACM* "${LEFT_PORT}" "${RIGHT_PORT}"; do
+  [[ -e "\$p" ]] || continue
+  real="\$(readlink -f "\$p" 2>/dev/null || true)"
+  [[ -n "\$real" && -e "\$real" ]] && sudo chmod 666 "\$real" || true
+done
+
+exec ros2 launch "${BASE_DIR}/brainco_ws/launch/multi_launch.py"
+EOF
+
+  cat > "${BASE_DIR}/brainco_ws/launch/launch_trans.sh" <<EOF
+#!/usr/bin/env bash
+set -eo pipefail
+
+if command -v conda >/dev/null 2>&1; then
+  source "\$(conda info --base)/etc/profile.d/conda.sh"
+  conda activate "${CONDA_ENV}"
+fi
+
+# Source the same runtime overlays as launch_robot.sh.
+set +u
+source "${UNITREE_ROS2_DIR}/setup.sh"
+source "${BASE_DIR}/brainco_ws/install/setup.bash"
+source "${BASE_DIR}/ros2_stark_ws/install/setup.bash"
+
+exec ros2 run control_py smach_trans_node
+EOF
+
+  chmod +x "${BASE_DIR}/brainco_ws/launch/launch_robot.sh" \
+           "${BASE_DIR}/brainco_ws/launch/launch_trans.sh"
+}
+
 install_permanent_rule() {
   [[ "$SKIP_UDEV" == "1" ]] && return 0
   local user_name="${SUDO_USER:-$USER}"
@@ -675,12 +709,15 @@ build_workspaces() {
     conda activate "$CONDA_ENV"
   fi
 
+  # ROS2/Unitree setup scripts may reference unset variables; keep nounset off while sourcing.
+  set +u
   if [[ -f "${UNITREE_ROS2_DIR}/setup.sh" ]]; then
     # shellcheck disable=SC1090
-    source_setup_file "${UNITREE_ROS2_DIR}/setup.sh"
+    source "${UNITREE_ROS2_DIR}/setup.sh"
   elif [[ -f /opt/ros/foxy/setup.bash ]]; then
     # shellcheck disable=SC1091
-    source_setup_file /opt/ros/foxy/setup.bash
+    set +u
+    source /opt/ros/foxy/setup.bash
   else
     warn "No Unitree/ROS2 setup found; build may fail."
   fi
@@ -710,16 +747,24 @@ write_run_wrappers() {
 set -eo pipefail
 source "\$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV}"
+set +u
+source "${UNITREE_ROS2_DIR}/setup.sh"
+source "${BASE_DIR}/brainco_ws/install/setup.bash"
+source "${BASE_DIR}/ros2_stark_ws/install/setup.bash"
 cd "${BASE_DIR}/brainco_ws"
-./launch/launch_robot.sh
+exec ros2 launch "${BASE_DIR}/brainco_ws/launch/multi_launch.py"
 EOF
   cat > "${BASE_DIR}/run_brainco_trans.sh" <<EOF
 #!/usr/bin/env bash
 set -eo pipefail
 source "\$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV}"
+set +u
+source "${UNITREE_ROS2_DIR}/setup.sh"
+source "${BASE_DIR}/brainco_ws/install/setup.bash"
+source "${BASE_DIR}/ros2_stark_ws/install/setup.bash"
 cd "${BASE_DIR}/brainco_ws"
-./launch/launch_trans.sh
+exec ros2 run control_py smach_trans_node
 EOF
   chmod +x "${BASE_DIR}/run_brainco_robot.sh" "${BASE_DIR}/run_brainco_trans.sh"
 }
@@ -735,6 +780,7 @@ main() {
   configure_hand_params
   install_permanent_rule
   build_workspaces
+  patch_launch_scripts
   write_run_wrappers
 
   cat <<EOF
