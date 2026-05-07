@@ -10,6 +10,7 @@ operation on the robot.
 Currently included:
 
 - `g1_pc2_wifi_setup.sh`: configure Wi-Fi on PC2 using NetworkManager. Run with `sudo`.
+- `g1_pc2_dual_wifi_setup.sh`: connect PC2 to an uplink Wi-Fi network while also exposing its own AP for direct SSH access. Run with `sudo`.
 - `g1_pc2_boot_time_sync_setup.sh`: install a one-shot boot-time clock sync service. Run with `sudo`.
 - `g1_pc2_apt_mirror_setup.sh`: switch Ubuntu APT sources on PC2 to reliable official Ubuntu mirrors. Run with `sudo`.
 - `brainco/setup_g1_brainco.sh`: set up the BrainCo hand software in the user's home directory. Run as the normal login user, not with `sudo`.
@@ -28,6 +29,7 @@ The intended one-time setup workflow is:
 Use the following invocation mode for each script:
 
 - `g1_pc2_wifi_setup.sh`: run with `sudo`.
+- `g1_pc2_dual_wifi_setup.sh`: run with `sudo`.
 - `g1_pc2_boot_time_sync_setup.sh`: run with `sudo`.
 - `g1_pc2_apt_mirror_setup.sh`: run with `sudo`.
 - `brainco/setup_g1_brainco.sh`: run as the normal login user, not with `sudo`.
@@ -116,6 +118,31 @@ sudo ./g1_pc2_wifi_setup.sh \
 
 This is normally a one-time setup step. Rerun it only if you need to change the
 Wi-Fi configuration on `g1-pc2`.
+
+## Optional: Uplink Wi-Fi Plus Local AP
+
+If PC2's actual Wi-Fi chip/driver supports concurrent client plus AP mode, this
+script can keep PC2 on your home Wi-Fi for internet access while also exposing
+its own SSH-friendly Wi-Fi network. The script checks support on the live
+machine before it tries to configure anything.
+
+Show help:
+
+```bash
+sudo ./g1_pc2_dual_wifi_setup.sh --help
+```
+
+Configure uplink plus AP:
+
+```bash
+sudo ./g1_pc2_dual_wifi_setup.sh --uplink-ssid "HomeWiFi" --ap-ssid "g1-pc2"
+```
+
+If setup succeeds, clients that join the local AP can SSH to:
+
+```bash
+ssh unitree@10.42.0.1
+```
 
 ## Optional: Install Boot-Time Clock Sync
 
