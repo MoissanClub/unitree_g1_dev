@@ -1,19 +1,26 @@
 # PC2 Setup Scripts
 
-This folder contains helper scripts intended to be copied to the Unitree G1 PC2 machine and run there.
+This folder contains helper scripts intended to be copied to the Unitree G1
+`pc2` machine and run there during initial setup.
+
+These scripts are meant to be run once, or only when you are intentionally
+re-provisioning `g1-pc2`. They are not meant to be part of normal day-to-day
+operation on the robot.
 
 Currently included:
 
 - `g1_pc2_wifi_setup.sh`: configure Wi-Fi on PC2 using NetworkManager.
 - `g1_pc2_boot_time_sync_setup.sh`: install a one-shot boot-time clock sync service.
+- `g1_pc2_apt_mirror_setup.sh`: switch Ubuntu APT sources on PC2 to reliable official Ubuntu mirrors.
 
 ## Typical Workflow
 
-The intended workflow is:
+The intended one-time setup workflow is:
 
 1. Connect to PC2 from your development machine.
 2. Copy this folder from your development machine to PC2.
-3. SSH into PC2 and run the script there with `sudo`.
+3. SSH into PC2 and run the needed setup script(s) there with `sudo`.
+4. Leave the installed configuration in place; do not keep rerunning these scripts unless you are deliberately changing the setup.
 
 ## 1. Connect To PC2
 
@@ -49,7 +56,7 @@ After copying, the script should be available on PC2 at:
 /home/unitree/pc2/g1_pc2_wifi_setup.sh
 ```
 
-## 3. Run The Script On PC2
+## 3. Run The Needed Setup Script On PC2
 
 SSH into PC2:
 
@@ -63,7 +70,7 @@ Change into the copied folder:
 cd /home/unitree/pc2
 ```
 
-Show help:
+For Wi-Fi setup, show help:
 
 ```bash
 sudo ./g1_pc2_wifi_setup.sh --help
@@ -93,6 +100,9 @@ sudo ./g1_pc2_wifi_setup.sh \
   --yes
 ```
 
+This is normally a one-time setup step. Rerun it only if you need to change the
+Wi-Fi configuration on `g1-pc2`.
+
 ## Optional: Install Boot-Time Clock Sync
 
 PC2 does not need a persistent NTP daemon if you want to keep background
@@ -120,10 +130,40 @@ sudo systemctl status --no-pager g1-pc2-sync-clock.service
 sudo journalctl -u g1-pc2-sync-clock.service -b --no-pager
 ```
 
+This installer is also intended to be run once. After installation, `systemd`
+and `NetworkManager` trigger the installed clock sync components automatically.
+
+## Optional: Switch APT Mirrors
+
+If `g1-pc2` ships with a slow or unreliable regional Ubuntu mirror, switch it
+to the official Ubuntu archive endpoints.
+
+Show help:
+
+```bash
+sudo ./g1_pc2_apt_mirror_setup.sh --help
+```
+
+Preview detected current Ubuntu source URLs and planned replacements:
+
+```bash
+sudo ./g1_pc2_apt_mirror_setup.sh
+```
+
+Apply the change and refresh package indexes:
+
+```bash
+sudo ./g1_pc2_apt_mirror_setup.sh --yes --update
+```
+
+This is intended as a one-time setup correction. Rerun it only if you are
+deliberately changing the configured Ubuntu mirror URLs again.
+
 ## Notes
 
-- Run the script on PC2, not on your development machine.
-- Use `sudo`; the script modifies NetworkManager and may install a boot-time service.
-- The script does not explicitly bring wired Ethernet down, but Wi-Fi can become the preferred default route for outbound traffic.
-- By default, the script refuses Wi-Fi static addresses in `192.168.123.0/24` to avoid conflict with the Unitree Ethernet side.
+- Run these scripts on `g1-pc2`, not on your development machine.
+- Treat these as setup-time provisioning tools, not recurring maintenance commands.
+- Use `sudo`; these scripts modify system configuration and may install boot-time services.
+- The Wi-Fi script does not explicitly bring wired Ethernet down, but Wi-Fi can become the preferred default route for outbound traffic.
+- By default, the Wi-Fi script refuses static addresses in `192.168.123.0/24` to avoid conflict with the Unitree Ethernet side.
 - The boot-time clock sync uses public HTTP endpoints for rough time correction. It is intended to limit drift, not provide authenticated secure time.
