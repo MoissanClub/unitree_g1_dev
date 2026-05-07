@@ -6,6 +6,9 @@
 #   - port scanning for Revo2 slave IDs 0x7e and 0x7f
 #   - stable /dev/serial/by-id ROS2 config
 #   - optional Unitree ROS2 and G1 URDF checks
+# Invoke as the normal login user, not with sudo. This script writes into
+# user-scoped paths under $HOME and only uses sudo internally for the specific
+# apt/udev operations that require elevation.
 
 set -euo pipefail
 shopt -s nullglob
@@ -47,6 +50,11 @@ die()  { printf '\033[1;31m[brainco-setup][error]\033[0m %s\n' "$*" >&2; exit 1;
 usage() {
   cat <<EOF
 Usage: $0 [options]
+
+Run mode:
+  * launch this script as the normal login user, not with sudo
+  * the script uses sudo internally only for apt/udev steps that need it
+  * running the whole script under sudo can break HOME-based paths and repo locations
 
 Default behavior:
   * clone/update ${REPO_URL} into ~/unitree-g1-brainco-hand

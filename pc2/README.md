@@ -9,9 +9,10 @@ operation on the robot.
 
 Currently included:
 
-- `g1_pc2_wifi_setup.sh`: configure Wi-Fi on PC2 using NetworkManager.
-- `g1_pc2_boot_time_sync_setup.sh`: install a one-shot boot-time clock sync service.
-- `g1_pc2_apt_mirror_setup.sh`: switch Ubuntu APT sources on PC2 to reliable official Ubuntu mirrors.
+- `g1_pc2_wifi_setup.sh`: configure Wi-Fi on PC2 using NetworkManager. Run with `sudo`.
+- `g1_pc2_boot_time_sync_setup.sh`: install a one-shot boot-time clock sync service. Run with `sudo`.
+- `g1_pc2_apt_mirror_setup.sh`: switch Ubuntu APT sources on PC2 to reliable official Ubuntu mirrors. Run with `sudo`.
+- `brainco/setup_g1_brainco.sh`: set up the BrainCo hand software in the user's home directory. Run as the normal login user, not with `sudo`.
 
 ## Typical Workflow
 
@@ -19,8 +20,21 @@ The intended one-time setup workflow is:
 
 1. Connect to PC2 from your development machine.
 2. Copy this folder from your development machine to PC2.
-3. SSH into PC2 and run the needed setup script(s) there with `sudo`.
+3. SSH into PC2 and run the needed setup script(s) there with the correct privilege level.
 4. Leave the installed configuration in place; do not keep rerunning these scripts unless you are deliberately changing the setup.
+
+## Privilege Model
+
+Use the following invocation mode for each script:
+
+- `g1_pc2_wifi_setup.sh`: run with `sudo`.
+- `g1_pc2_boot_time_sync_setup.sh`: run with `sudo`.
+- `g1_pc2_apt_mirror_setup.sh`: run with `sudo`.
+- `brainco/setup_g1_brainco.sh`: run as the normal login user, not with `sudo`.
+
+The BrainCo script is different from the others because it writes into
+user-specific paths under `~` and assumes the normal user's home directory and
+repo layout. Running the whole script under `sudo` can cause path mismatches.
 
 ## 1. Connect To PC2
 
@@ -70,7 +84,7 @@ Change into the copied folder:
 cd /home/unitree/pc2
 ```
 
-For Wi-Fi setup, show help:
+For Wi-Fi setup, show help. This script should be invoked with `sudo`:
 
 ```bash
 sudo ./g1_pc2_wifi_setup.sh --help
@@ -110,6 +124,8 @@ services to a minimum. This installer adds a one-shot `systemd` service that
 waits for networking at boot, fetches an HTTP `Date` header from a small list
 of public endpoints, sets the system clock once, then exits.
 
+This script should be invoked with `sudo`.
+
 Show help:
 
 ```bash
@@ -138,6 +154,8 @@ and `NetworkManager` trigger the installed clock sync components automatically.
 If `g1-pc2` ships with a slow or unreliable regional Ubuntu mirror, switch it
 to the official Ubuntu archive endpoints.
 
+This script should be invoked with `sudo`.
+
 Show help:
 
 ```bash
@@ -159,11 +177,33 @@ sudo ./g1_pc2_apt_mirror_setup.sh --yes --update
 This is intended as a one-time setup correction. Rerun it only if you are
 deliberately changing the configured Ubuntu mirror URLs again.
 
+## Optional: Set Up BrainCo Hands
+
+The BrainCo setup script lives under `brainco/` and should be run as the normal
+login user, not with `sudo`, because it clones repositories and writes
+configuration under `~`.
+
+Show help:
+
+```bash
+./brainco/setup_g1_brainco.sh --help
+```
+
+Run it as the normal user:
+
+```bash
+./brainco/setup_g1_brainco.sh
+```
+
+Do not prepend `sudo` to the entire BrainCo script. It already calls `sudo`
+internally for the specific apt and udev steps that require elevation.
+
 ## Notes
 
 - Run these scripts on `g1-pc2`, not on your development machine.
 - Treat these as setup-time provisioning tools, not recurring maintenance commands.
-- Use `sudo`; these scripts modify system configuration and may install boot-time services.
+- Use `sudo` for the Wi-Fi, boot-time clock sync, and APT mirror scripts.
+- Run `brainco/setup_g1_brainco.sh` as the normal login user, not with `sudo`.
 - The Wi-Fi script does not explicitly bring wired Ethernet down, but Wi-Fi can become the preferred default route for outbound traffic.
 - By default, the Wi-Fi script refuses static addresses in `192.168.123.0/24` to avoid conflict with the Unitree Ethernet side.
 - The boot-time clock sync uses public HTTP endpoints for rough time correction. It is intended to limit drift, not provide authenticated secure time.

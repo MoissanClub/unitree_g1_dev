@@ -2,6 +2,8 @@
 # g1_pc2_wifi_setup.sh
 # Robust Wi-Fi setup for the Unitree G1 development computer PC2.
 # Intended to run ON PC2, usually after SSHing to unitree@192.168.123.164.
+# Invoke with sudo. This script edits system NetworkManager state and re-execs
+# itself under sudo if needed.
 #
 # Important routing note:
 # - This script only configures a Wi-Fi NetworkManager profile and does not
@@ -74,6 +76,7 @@ Options:
   -h, --help                     Show this help.
 
 Safety notes:
+  - Invoke this script with sudo. It edits system network configuration.
   - This script configures only the Wi-Fi interface/profile.
   - It does not explicitly disable wired Ethernet, but the Wi-Fi profile is
     allowed to become the default route for non-local traffic.

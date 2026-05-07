@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # g1_pc2_boot_time_sync_setup.sh
 # Install a one-shot boot-time clock sync service for Unitree G1 PC2.
+# Invoke with sudo. This script installs root-owned files under /usr/local,
+# /etc/systemd/system, and /etc/NetworkManager/dispatcher.d.
 #
 # Design goals:
 # - No continuously running NTP daemon.
@@ -46,6 +48,7 @@ Options:
   -h, --help             Show this help.
 
 Notes:
+  - Invoke this script with sudo. It installs system services and dispatcher hooks.
   - This is approximate internet time, not a cryptographically authenticated
     secure time protocol.
   - It is intended to keep PC2 from drifting too far, while keeping background

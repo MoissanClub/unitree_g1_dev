@@ -2,6 +2,7 @@
 # g1_pc2_apt_mirror_setup.sh
 # Switch Ubuntu APT sources on Unitree G1 PC2 away from slow/unreliable mirrors
 # to official Ubuntu endpoints.
+# Invoke with sudo. This script rewrites files under /etc/apt.
 
 set -Eeuo pipefail
 
@@ -45,6 +46,7 @@ Options:
   -h, --help            Show this help.
 
 Notes:
+  - Invoke this script with sudo. It modifies APT source files under /etc/apt.
   - This script only rewrites Ubuntu archive URLs. It does not remove third-party repositories.
   - It is intended to replace slow or unreliable regional mirrors with official Ubuntu endpoints.
 USAGE
