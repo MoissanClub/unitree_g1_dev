@@ -6,9 +6,6 @@
 #   - port scanning for Revo2 slave IDs 0x7e and 0x7f
 #   - stable /dev/serial/by-id ROS2 config
 #   - optional Unitree ROS2 and G1 URDF checks
-# Invoke as the normal login user, not with sudo. This script writes into
-# user-scoped paths under $HOME and only uses sudo internally for the specific
-# apt/udev operations that require elevation.
 
 set -euo pipefail
 shopt -s nullglob
@@ -50,11 +47,6 @@ die()  { printf '\033[1;31m[brainco-setup][error]\033[0m %s\n' "$*" >&2; exit 1;
 usage() {
   cat <<EOF
 Usage: $0 [options]
-
-Run mode:
-  * launch this script as the normal login user, not with sudo
-  * the script uses sudo internally only for apt/udev steps that need it
-  * running the whole script under sudo can break HOME-based paths and repo locations
 
 Default behavior:
   * clone/update ${REPO_URL} into ~/unitree-g1-brainco-hand
@@ -126,6 +118,23 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing command '$1'. Install it and rerun."
 }
 
+source_setup_file() {
+  # ROS2/ament and conda setup scripts are not always safe under `set -u`.
+  # Temporarily disable nounset only while sourcing them, then restore it.
+  local file="$1"
+  local nounset_was_on=0
+  case "$-" in
+    *u*) nounset_was_on=1; set +u ;;
+  esac
+  # shellcheck disable=SC1090
+  source "$file"
+  local rc=$?
+  if [[ "$nounset_was_on" == "1" ]]; then
+    set -u
+  fi
+  return "$rc"
+}
+
 install_apt_deps() {
   [[ "$SKIP_APT" == "1" ]] && return 0
   log "Installing/checking apt packages..."
@@ -173,19 +182,19 @@ clone_or_update_repo() {
 conda_shell_setup() {
   if command -v conda >/dev/null 2>&1; then
     # shellcheck disable=SC1091
-    source "$(conda info --base)/etc/profile.d/conda.sh"
+    source_setup_file "$(conda info --base)/etc/profile.d/conda.sh"
     return 0
   fi
 
   if [[ -f "${HOME}/miniconda3/etc/profile.d/conda.sh" ]]; then
     # shellcheck disable=SC1091
-    source "${HOME}/miniconda3/etc/profile.d/conda.sh"
+    source_setup_file "${HOME}/miniconda3/etc/profile.d/conda.sh"
     return 0
   fi
 
   if [[ -f "${HOME}/anaconda3/etc/profile.d/conda.sh" ]]; then
     # shellcheck disable=SC1091
-    source "${HOME}/anaconda3/etc/profile.d/conda.sh"
+    source_setup_file "${HOME}/anaconda3/etc/profile.d/conda.sh"
     return 0
   fi
 
@@ -245,7 +254,7 @@ ensure_unitree_ros2() {
 
   (
     # shellcheck disable=SC1091
-    source /opt/ros/foxy/setup.bash
+    source_setup_file /opt/ros/foxy/setup.bash
     cd "${UNITREE_ROS2_DIR}/cyclonedds_ws"
     colcon build
   )
@@ -668,10 +677,10 @@ build_workspaces() {
 
   if [[ -f "${UNITREE_ROS2_DIR}/setup.sh" ]]; then
     # shellcheck disable=SC1090
-    source "${UNITREE_ROS2_DIR}/setup.sh"
+    source_setup_file "${UNITREE_ROS2_DIR}/setup.sh"
   elif [[ -f /opt/ros/foxy/setup.bash ]]; then
     # shellcheck disable=SC1091
-    source /opt/ros/foxy/setup.bash
+    source_setup_file /opt/ros/foxy/setup.bash
   else
     warn "No Unitree/ROS2 setup found; build may fail."
   fi
@@ -698,7 +707,7 @@ write_run_wrappers() {
   log "Writing convenience launch wrappers..."
   cat > "${BASE_DIR}/run_brainco_robot.sh" <<EOF
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 source "\$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV}"
 cd "${BASE_DIR}/brainco_ws"
@@ -706,7 +715,7 @@ cd "${BASE_DIR}/brainco_ws"
 EOF
   cat > "${BASE_DIR}/run_brainco_trans.sh" <<EOF
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 source "\$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV}"
 cd "${BASE_DIR}/brainco_ws"
