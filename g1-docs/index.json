@@ -1,0 +1,459 @@
+{
+  "generated_at": "2026-05-09T17:24:36+00:00",
+  "doc_count": 44,
+  "asset_count": 119,
+  "directory": [
+    {
+      "name": "关于G1",
+      "path": "about_G1",
+      "url": "https://doc-cdn.unitree.com/11/223/zh/11_223_zh",
+      "index_path": "00",
+      "local_path": "pages/00_about_G1.md",
+      "status": "ok",
+      "bytes": 16859,
+      "sha256": "a29a16d427f5a2a64ca2eb17918c6d203276bc451de629438c11c5166b31ba37"
+    },
+    {
+      "name": "操作指南",
+      "path": "Operational_guidance",
+      "url": "https://doc-cdn.unitree.com/11/226/zh/11_226_zh",
+      "index_path": "01",
+      "local_path": "pages/01_Operational_guidance.md",
+      "status": "ok",
+      "bytes": 270,
+      "sha256": "0364c896b7f6ac5a1eb9544f2834ed780fdbfde6b7678255dc1ad658d5962bd7",
+      "children": [
+        {
+          "name": "快速开始",
+          "path": "quick_start",
+          "url": "https://doc-cdn.unitree.com/11/227/zh/11_227_zh",
+          "index_path": "01_00",
+          "local_path": "pages/01_00_quick_start.md",
+          "status": "ok",
+          "bytes": 6881,
+          "sha256": "b994eb312cdd6138f3a9ad7a18fe13d1334de1b1c17bcef38c0151d51bebefc8"
+        },
+        {
+          "name": "遥控说明",
+          "path": "remote_control",
+          "url": "https://doc-cdn.unitree.com/11/228/zh/11_228_zh",
+          "index_path": "01_01",
+          "local_path": "pages/01_01_remote_control.md",
+          "status": "ok",
+          "bytes": 6778,
+          "sha256": "9a112693fb3694905a9094f9f8a58f90994707628517606bb50bb1792a7490f8"
+        },
+        {
+          "name": "腰部固定件使用说明",
+          "path": "waist_fastener",
+          "url": "https://doc-cdn.unitree.com/11/300/zh/11_300_zh",
+          "index_path": "01_02",
+          "local_path": "pages/01_02_waist_fastener.md",
+          "status": "ok",
+          "bytes": 3692,
+          "sha256": "1eaf12c0da32ece29c2022157c413cafd1ccc88cdd1fefa87ab9534275bdf878"
+        },
+        {
+          "name": "语音助手使用说明",
+          "path": "voice_assistant_instructions",
+          "url": "https://doc-cdn.unitree.com/11/786/zh/11_786_zh",
+          "index_path": "01_03",
+          "local_path": "pages/01_03_voice_assistant_instructions.md",
+          "status": "ok",
+          "bytes": 2323,
+          "sha256": "fec343f59e9f9f12ff6775b25e10ab2c6f5753e665ae6ebac851525336787f0a"
+        },
+        {
+          "name": "音频播放",
+          "path": "audio_playback",
+          "url": "https://doc-cdn.unitree.com/11/955/zh/11_955_zh",
+          "index_path": "01_04",
+          "local_path": "pages/01_04_audio_playback.md",
+          "status": "ok",
+          "bytes": 1218,
+          "sha256": "3c5c033b591b7b65626f6a5447e74b80854d0bb3c45315b7299a1be765e62bb4"
+        }
+      ]
+    },
+    {
+      "name": "应用开发",
+      "path": "application_development",
+      "url": "https://doc-cdn.unitree.com/11/231/zh/11_231_zh",
+      "index_path": "02",
+      "local_path": "pages/02_application_development.md",
+      "status": "ok",
+      "bytes": 750,
+      "sha256": "9d56a5a16a759e7f1b5f8bff1d7feec51ebfb4b5a6d82b2d7d38eeae59eaa9a2",
+      "children": [
+        {
+          "name": "SDK概述",
+          "path": "sdk_overview",
+          "url": "https://doc-cdn.unitree.com/11/232/zh/11_232_zh",
+          "index_path": "02_00",
+          "local_path": "pages/02_00_sdk_overview.md",
+          "status": "ok",
+          "bytes": 1047,
+          "sha256": "01dcd6f102fa578bdaf0ca6fea73d13902be683c8da80bcec848139921acd64b"
+        },
+        {
+          "name": "软件架构说明",
+          "path": "architecture_description",
+          "url": "https://doc-cdn.unitree.com/11/233/zh/11_233_zh",
+          "index_path": "02_01",
+          "local_path": "pages/02_01_architecture_description.md",
+          "status": "ok",
+          "bytes": 2249,
+          "sha256": "7cb0de965375b3d4ddba3ee4b8dee26d105d04f0c4145fa71bb470d53fcd75bc"
+        },
+        {
+          "name": "获取SDK",
+          "path": "get_sdk",
+          "url": "https://doc-cdn.unitree.com/11/235/zh/11_235_zh",
+          "index_path": "02_02",
+          "local_path": "pages/02_02_get_sdk.md",
+          "status": "ok",
+          "bytes": 2312,
+          "sha256": "85b682a054ca8c72112d2b995d8ad4761172ffb08be973f122c412cb6bb33b6d"
+        },
+        {
+          "name": "快速开发",
+          "path": "quick_development",
+          "url": "https://doc-cdn.unitree.com/11/236/zh/11_236_zh",
+          "index_path": "02_03",
+          "local_path": "pages/02_03_quick_development.md",
+          "status": "ok",
+          "bytes": 4322,
+          "sha256": "81f79a5ace88088adde60a3184d72f416332d8537fccf34a0b9b4a65dbe6725f"
+        }
+      ]
+    },
+    {
+      "name": "底层运动开发",
+      "path": "basic_motion_development",
+      "url": "https://doc-cdn.unitree.com/11/238/zh/11_238_zh",
+      "index_path": "03",
+      "local_path": "pages/03_basic_motion_development.md",
+      "status": "ok",
+      "bytes": 1150,
+      "sha256": "d86697ab1be33a244b817df1c5f54e0ff45b2591d2485d08784250755791e35e",
+      "children": [
+        {
+          "name": "底层运动参考例程",
+          "path": "basic_motion_routine",
+          "url": "https://doc-cdn.unitree.com/11/248/zh/11_248_zh",
+          "index_path": "03_00",
+          "local_path": "pages/03_00_basic_motion_routine.md",
+          "status": "ok",
+          "bytes": 8984,
+          "sha256": "f67ff30afda674f9589d79c5e59b41ce865bd370d397a789c5ecd394b8b4f1c6"
+        },
+        {
+          "name": "关节电机顺序",
+          "path": "joint_motor_sequence",
+          "url": "https://doc-cdn.unitree.com/11/249/zh/11_249_zh",
+          "index_path": "03_01",
+          "local_path": "pages/03_01_joint_motor_sequence.md",
+          "status": "ok",
+          "bytes": 11581,
+          "sha256": "8cf555d15720aaf9506d1e08c95338d2af80a060d395bfd5ab125a37f50fdbad"
+        },
+        {
+          "name": "遥控器数据结构",
+          "path": "remote_control_data",
+          "url": "https://doc-cdn.unitree.com/11/250/zh/11_250_zh",
+          "index_path": "03_02",
+          "local_path": "pages/03_02_remote_control_data.md",
+          "status": "ok",
+          "bytes": 1599,
+          "sha256": "27a3634018f8cd053ee4d65e88789bd767adb8a9cf12a9d037190257bc19d456"
+        },
+        {
+          "name": "Dex3-1 灵巧手开发",
+          "path": "dexterous_hand",
+          "url": "https://doc-cdn.unitree.com/11/251/zh/11_251_zh",
+          "index_path": "03_03",
+          "local_path": "pages/03_03_dexterous_hand.md",
+          "status": "ok",
+          "bytes": 13111,
+          "sha256": "6db40f98e9f55b73817c21cf385c792dc6fa5dab1b7507b5878fdfefcd5e8270"
+        },
+        {
+          "name": "因时FTP灵巧手",
+          "path": "inspire_ftp_dexterity_hand",
+          "url": "https://doc-cdn.unitree.com/11/306/zh/11_306_zh",
+          "index_path": "03_04",
+          "local_path": "pages/03_04_inspire_ftp_dexterity_hand.md",
+          "status": "ok",
+          "bytes": 11969,
+          "sha256": "cebb5094830d39b6ccdc08fe681f3523f0b541c5ee58f80f9610f3e28aa1e3df"
+        },
+        {
+          "name": "因时DFX灵巧手开发",
+          "path": "inspire_dfx_dexterous_hand",
+          "url": "https://doc-cdn.unitree.com/11/768/zh/11_768_zh",
+          "index_path": "03_05",
+          "local_path": "pages/03_05_inspire_dfx_dexterous_hand.md",
+          "status": "ok",
+          "bytes": 6324,
+          "sha256": "2d6b0b408b3ffaebc0a081ba7e8d2c214c57f479248c39aeeaadf80a3d972b10"
+        },
+        {
+          "name": "强脑灵巧手",
+          "path": "brainco_hand",
+          "url": "https://doc-cdn.unitree.com/11/815/zh/11_815_zh",
+          "index_path": "03_06",
+          "local_path": "pages/03_06_brainco_hand.md",
+          "status": "ok",
+          "bytes": 1490,
+          "sha256": "5377795c67580ddf6b1c40f8da39978655562739ec2c6bed4eded3bb2fd900d8"
+        }
+      ]
+    },
+    {
+      "name": "软件服务接口",
+      "path": "services_interface",
+      "url": "https://doc-cdn.unitree.com/11/237/zh/11_237_zh",
+      "index_path": "04",
+      "local_path": "pages/04_services_interface.md",
+      "status": "ok",
+      "bytes": 561,
+      "sha256": "98a97d345f6fb652670404866e3d0080d8d9ffe2bb7138186e5ddd840a10edce",
+      "children": [
+        {
+          "name": "DDS通信接口",
+          "path": "dds_services_interface",
+          "url": "https://doc-cdn.unitree.com/11/252/zh/11_252_zh",
+          "index_path": "04_00",
+          "local_path": "pages/04_00_dds_services_interface.md",
+          "status": "ok",
+          "bytes": 14906,
+          "sha256": "d57a5d01ebc4c453575d63b9f82cef0cf40f68435d307b5eb5cdc9d225508ee8"
+        },
+        {
+          "name": "设备状态服务接口",
+          "path": "robot_state_client_interface",
+          "url": "https://doc-cdn.unitree.com/11/253/zh/11_253_zh",
+          "index_path": "04_01",
+          "local_path": "pages/04_01_robot_state_client_interface.md",
+          "status": "ok",
+          "bytes": 2345,
+          "sha256": "4b3bee250114d954909e76d178f5f9a6a9cffa8ebd242ef7bb5d8a0e3cc86566"
+        },
+        {
+          "name": "底层服务接口",
+          "path": "basic_services_interface",
+          "url": "https://doc-cdn.unitree.com/11/254/zh/11_254_zh",
+          "index_path": "04_02",
+          "local_path": "pages/04_02_basic_services_interface.md",
+          "status": "ok",
+          "bytes": 11165,
+          "sha256": "d40086c792dda5c7419679cc4037e203a57d0703bc7e6a180b4b3a6d3852965d"
+        },
+        {
+          "name": "高层运动服务接口",
+          "path": "sport_services_interface",
+          "url": "https://doc-cdn.unitree.com/11/255/zh/11_255_zh",
+          "index_path": "04_03",
+          "local_path": "pages/04_03_sport_services_interface.md",
+          "status": "ok",
+          "bytes": 10383,
+          "sha256": "f33d8e957fe548dc060ded8a48c07f8672226524bee507ae3b9cb346be112a2a"
+        },
+        {
+          "name": "里程计服务接口",
+          "path": "odometer_service_interface",
+          "url": "https://doc-cdn.unitree.com/11/709/zh/11_709_zh",
+          "index_path": "04_04",
+          "local_path": "pages/04_04_odometer_service_interface.md",
+          "status": "ok",
+          "bytes": 6901,
+          "sha256": "1a6d07652343f05bf22d260c1af45283a1752437d1037dbd1221df3e27a1ae96"
+        },
+        {
+          "name": "音频灯光服务接口",
+          "path": "VuiClient_Service",
+          "url": "https://doc-cdn.unitree.com/11/731/zh/11_731_zh",
+          "index_path": "04_05",
+          "local_path": "pages/04_05_VuiClient_Service.md",
+          "status": "ok",
+          "bytes": 12212,
+          "sha256": "747fe0ce0962747636bb6730a903248467cb28845bfb67a7f24efd4a880933aa"
+        },
+        {
+          "name": "LiDAR服务接口",
+          "path": "lidar_services_interface",
+          "url": "https://doc-cdn.unitree.com/11/733/zh/11_733_zh",
+          "index_path": "04_06",
+          "local_path": "pages/04_06_lidar_services_interface.md",
+          "status": "ok",
+          "bytes": 2524,
+          "sha256": "cd292da6084c286804cf761d10e097500343c3a849cef505d7d212addccd3105"
+        },
+        {
+          "name": "SLAM导航服务接口",
+          "path": "slam_navigation_services_interface",
+          "url": "https://doc-cdn.unitree.com/11/734/zh/11_734_zh",
+          "index_path": "04_07",
+          "local_path": "pages/04_07_slam_navigation_services_interface.md",
+          "status": "ok",
+          "bytes": 10614,
+          "sha256": "336703a6b09aa206637afae02b0da6f4a748cffeb6a0dc7e14c9bc933d3ef21c"
+        },
+        {
+          "name": "运控切换接口",
+          "path": "motion_witcher_service_interface",
+          "url": "https://doc-cdn.unitree.com/11/993/zh/11_993_zh",
+          "index_path": "04_08",
+          "local_path": "pages/04_08_motion_witcher_service_interface.md",
+          "status": "ok",
+          "bytes": 2298,
+          "sha256": "ecf00e4cd99c7ab7a3eb60ee1047d0da077402853495abaf8a9164ab87216eba"
+        },
+        {
+          "name": "时间同步接口",
+          "path": "time_sync_interface",
+          "url": "https://doc-cdn.unitree.com/11/1216/zh/11_1216_zh",
+          "index_path": "04_09",
+          "local_path": "pages/04_09_time_sync_interface.md",
+          "status": "ok",
+          "bytes": 3855,
+          "sha256": "ccfb63e3e50b2b8891b756efcdf4c0c6bc6a7dd85465727a44a98eb29962fec7"
+        }
+      ]
+    },
+    {
+      "name": "高层运动开发",
+      "path": "high_motion_development",
+      "url": "https://doc-cdn.unitree.com/11/239/zh/11_239_zh",
+      "index_path": "05",
+      "local_path": "pages/05_high_motion_development.md",
+      "status": "ok",
+      "bytes": 395,
+      "sha256": "eb338d55fde6c76bcf4e21c32cceaf22b9e3e8d3faa097f37441daae3175a776",
+      "children": [
+        {
+          "name": "RPC例程",
+          "path": "rpc_routine",
+          "url": "https://doc-cdn.unitree.com/11/246/zh/11_246_zh",
+          "index_path": "05_00",
+          "local_path": "pages/05_00_rpc_routine.md",
+          "status": "ok",
+          "bytes": 9459,
+          "sha256": "e1f4bc5df45ce7794e362c39cc55b0d6f8efed406884fa290cb2fa6096adad37"
+        },
+        {
+          "name": "手臂控制例程",
+          "path": "arm_control_routine",
+          "url": "https://doc-cdn.unitree.com/11/247/zh/11_247_zh",
+          "index_path": "05_01",
+          "local_path": "pages/05_01_arm_control_routine.md",
+          "status": "ok",
+          "bytes": 5841,
+          "sha256": "4d175e48b59f8b871897cf70e5fa3470fb05720ce9fd14ad26f9153f904d2dae"
+        },
+        {
+          "name": "手臂动作服务接口",
+          "path": "arm_action_interface",
+          "url": "https://doc-cdn.unitree.com/11/1004/zh/11_1004_zh",
+          "index_path": "05_02",
+          "local_path": "pages/05_02_arm_action_interface.md",
+          "status": "ok",
+          "bytes": 4973,
+          "sha256": "0ae638603d94f23dc372002a53eaf7f64516f9f768f61e3dbc205872346204fc"
+        }
+      ]
+    },
+    {
+      "name": "更多例程",
+      "path": "more_cases",
+      "url": "https://doc-cdn.unitree.com/11/240/zh/11_240_zh",
+      "index_path": "06",
+      "local_path": "pages/06_more_cases.md",
+      "status": "ok",
+      "bytes": 249,
+      "sha256": "d06164e1d22ed9f8e859f5c86bb191390861dbec953fac60f2464581b0958f50",
+      "children": [
+        {
+          "name": "RL例程",
+          "path": "rl_control_routine",
+          "url": "https://doc-cdn.unitree.com/11/243/zh/11_243_zh",
+          "index_path": "06_00",
+          "local_path": "pages/06_00_rl_control_routine.md",
+          "status": "ok",
+          "bytes": 2801,
+          "sha256": "3c08be02160e6bf57bd5957179906fcf621630f58894b74ece95b7fc8795c734"
+        },
+        {
+          "name": "ROS2 通信例程",
+          "path": "ros2_communication_routine",
+          "url": "https://doc-cdn.unitree.com/11/244/zh/11_244_zh",
+          "index_path": "06_01",
+          "local_path": "pages/06_01_ros2_communication_routine.md",
+          "status": "ok",
+          "bytes": 5403,
+          "sha256": "f4af213481964d8155954b46ecc81319a50a6b60900adfa6625d3bdd284f0e8b"
+        },
+        {
+          "name": "DDS通信例程",
+          "path": "dds_communication_routine",
+          "url": "https://doc-cdn.unitree.com/11/245/zh/11_245_zh",
+          "index_path": "06_02",
+          "local_path": "pages/06_02_dds_communication_routine.md",
+          "status": "ok",
+          "bytes": 2642,
+          "sha256": "308dda709dcb8723bc3818c6549a338cfb036c6604997c6ddb6223c345ca7c3e"
+        },
+        {
+          "name": "激光雷达例程",
+          "path": "lidar_Instructions",
+          "url": "https://doc-cdn.unitree.com/11/266/zh/11_266_zh",
+          "index_path": "06_03",
+          "local_path": "pages/06_03_lidar_Instructions.md",
+          "status": "ok",
+          "bytes": 8421,
+          "sha256": "4a8b4c8acd7e487aec684b080f051f12429b07f35cda39d74b095dd9d52cd2b0"
+        },
+        {
+          "name": "深度相机例程",
+          "path": "depth_camera_instruction",
+          "url": "https://doc-cdn.unitree.com/11/267/zh/11_267_zh",
+          "index_path": "06_04",
+          "local_path": "pages/06_04_depth_camera_instruction.md",
+          "status": "ok",
+          "bytes": 17858,
+          "sha256": "187bbc6ec99a376d9bcc6c840d0982f5b9bb977b8c342210ea9b21a620165095"
+        }
+      ]
+    },
+    {
+      "name": "调试说明",
+      "path": "debugging_specification",
+      "url": "https://doc-cdn.unitree.com/11/241/zh/11_241_zh",
+      "index_path": "07",
+      "local_path": "pages/07_debugging_specification.md",
+      "status": "ok",
+      "bytes": 909,
+      "sha256": "d24368ab8154d81a2d74911f428802d22fd7148e18c9abed5d7e032f4939664e"
+    },
+    {
+      "name": "常见问题",
+      "path": "FAQ",
+      "url": "https://doc-cdn.unitree.com/11/242/zh/11_242_zh",
+      "index_path": "08",
+      "local_path": "pages/08_FAQ.md",
+      "status": "ok",
+      "bytes": 13669,
+      "sha256": "f4210b3576e798ca36debd330a80fe913362b2ccd13bc0387277c7d6d7a46edf"
+    },
+    {
+      "name": "常见错误及释义",
+      "path": "common_istakes_and_definitions",
+      "url": "https://doc-cdn.unitree.com/11/308/zh/11_308_zh",
+      "index_path": "09",
+      "local_path": "pages/09_common_istakes_and_definitions.md",
+      "status": "ok",
+      "bytes": 4105,
+      "sha256": "a82df4413dccf02fc9ac4eb9d47c3a99ae2bc4f7a06bae474bad8c0f7865e79e"
+    }
+  ]
+}
