@@ -346,7 +346,7 @@ def update_section_value(src: str, section: str, key: str, value: str) -> str:
     body = match.group(2)
     key_pat = re.compile(rf'(^[ \t]+{re.escape(key)}:\s*).*$', re.MULTILINE)
     if key_pat.search(body):
-      body = key_pat.sub(rf'\1{value}', body, count=1)
+      body = key_pat.sub(rf'\g<1>{value}', body, count=1)
     else:
       body = body + f"  {key}: {value}\n"
 
