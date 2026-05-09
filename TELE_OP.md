@@ -85,9 +85,16 @@ cp cert.pem key.pem ~/.config/xr_teleoperate/
 ```
 
 ### teleimager
-- First list available cameras, record the video id of G1's RealSense Camera. mine is 2.
+- allow non-root user to access usb camera. Script creates video group and add current user(unitree) to it. OK to ignore modprobe error.
+```bash
+cd ~/xr_teleoperate/teleop/teleimager
+bash setup_uvc.sh
 ```
-cd xr_teleoperate/teleop/teleimager
+logout and login again for group to take effect.
+
+- First list available cameras, record the video id of G1's RealSense Camera. mine is 2.
+```bash
+cd ~/xr_teleoperate/teleop/teleimager
 conda activate tv
 teleimager-server --cf
 ```
