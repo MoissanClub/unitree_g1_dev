@@ -143,6 +143,17 @@ detect_realsense_video_id() {
     return 0
   fi
 
+  if [[ -d "${XR_REPO_DIR}/teleop/teleimager" ]]; then
+    local teleimager_output=""
+    local detected_id=""
+    teleimager_output="$(run_in_conda teleimager-server --cf 2>&1 || true)"
+    detected_id="$(printf '%s\n' "${teleimager_output}" | sed -n "s/.*Found RGB video devices: \['\/dev\/video\([0-9]\+\)'.*/\1/p" | head -n1)"
+    if [[ -n "${detected_id}" ]]; then
+      printf '%s\n' "${detected_id}"
+      return 0
+    fi
+  fi
+
   if compgen -G "/dev/v4l/by-id/*RealSense*index0*" >/dev/null; then
     local dev_path=""
     dev_path="$(readlink -f /dev/v4l/by-id/*RealSense*index0* 2>/dev/null | head -n1 || true)"
