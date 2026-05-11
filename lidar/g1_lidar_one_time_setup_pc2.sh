@@ -30,6 +30,15 @@ info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
+source_relaxed() {
+  local had_nounset=0
+  [[ $- == *u* ]] && had_nounset=1
+  set +u
+  # shellcheck disable=SC1090
+  source "$1"
+  (( had_nounset )) && set -u
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing command: $1"
 }
@@ -139,8 +148,7 @@ maybe_build_unitree_ws() {
   colcon build --packages-select cyclonedds
 
   info "Building remaining Unitree ROS2 packages."
-  # shellcheck disable=SC1091
-  source "/opt/ros/$ROS_DISTRO_NAME/setup.bash"
+  source_relaxed "/opt/ros/$ROS_DISTRO_NAME/setup.bash"
   colcon build
 
   popd >/dev/null
@@ -162,8 +170,13 @@ write_env_file() {
 unset QT_PLUGIN_PATH
 unset QT_QPA_PLATFORM_PLUGIN_PATH
 
+__g1_had_nounset=0
+[[ \$- == *u* ]] && __g1_had_nounset=1
+set +u
 source /opt/ros/$ROS_DISTRO_NAME/setup.bash
 source "$UNITREE_ROS2_DIR/cyclonedds_ws/install/setup.bash"
+(( __g1_had_nounset )) && set -u
+unset __g1_had_nounset
 
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_LOCALHOST_ONLY=0
@@ -207,14 +220,22 @@ write_launcher() {
 
 set -Eeuo pipefail
 
+source_relaxed() {
+  local had_nounset=0
+  [[ $- == *u* ]] && had_nounset=1
+  set +u
+  # shellcheck disable=SC1090
+  source "$1"
+  (( had_nounset )) && set -u
+}
+
 ENV_FILE="${G1_LIDAR_ENV_FILE:-$HOME/.g1_lidar_env.sh}"
 [[ -f "$ENV_FILE" ]] || {
   echo "[ERROR] Missing $ENV_FILE. Run g1_lidar_one_time_setup_pc2.sh first." >&2
   exit 1
 }
 
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+source_relaxed "$ENV_FILE"
 
 TOPIC="${G1_LIDAR_TOPIC:-/utlidar/cloud_livox_mid360}"
 LIDAR_FRAME="${G1_LIDAR_FRAME:-livox_frame}"
@@ -435,7 +456,7 @@ main() {
 
   # Basic validation.
   # shellcheck disable=SC1090
-  source "$ENV_FILE"
+  source_relaxed "$ENV_FILE"
 
   log "Environment check:"
   echo "  RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-}"

@@ -11,14 +11,22 @@
 
 set -Eeuo pipefail
 
+source_relaxed() {
+  local had_nounset=0
+  [[ $- == *u* ]] && had_nounset=1
+  set +u
+  # shellcheck disable=SC1090
+  source "$1"
+  (( had_nounset )) && set -u
+}
+
 ENV_FILE="${G1_LIDAR_ENV_FILE:-$HOME/.g1_lidar_env.sh}"
 [[ -f "$ENV_FILE" ]] || {
   echo "[ERROR] Missing $ENV_FILE. Run g1_lidar_one_time_setup_pc2.sh first." >&2
   exit 1
 }
 
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+source_relaxed "$ENV_FILE"
 
 TOPIC="${G1_LIDAR_TOPIC:-/utlidar/cloud_livox_mid360}"
 LIDAR_FRAME="${G1_LIDAR_FRAME:-livox_frame}"
