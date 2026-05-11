@@ -84,6 +84,7 @@ if [[ -n "$TYPE" ]]; then
 fi
 
 TF_PID=""
+RVIZ_CONFIG=""
 FIXED_FRAME="$LIDAR_FRAME"
 
 if [[ "$USE_DUMMY_TF" == "1" ]]; then
@@ -97,6 +98,9 @@ fi
 cleanup() {
   if [[ -n "${TF_PID:-}" ]]; then
     kill "$TF_PID" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${RVIZ_CONFIG:-}" && -f "$RVIZ_CONFIG" ]]; then
+    rm -f "$RVIZ_CONFIG"
   fi
 }
 trap cleanup EXIT
