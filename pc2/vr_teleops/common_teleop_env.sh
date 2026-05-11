@@ -135,6 +135,8 @@ teleop_export_common_env() {
   export G1_TELEOP_XR_REPO="${G1_TELEOP_XR_REPO:-${HOME}/xr_teleoperate}"
   export G1_TELEOP_BRAINCO_SERVICE_DIR="${G1_TELEOP_BRAINCO_SERVICE_DIR:-${HOME}/brainco_hand_service}"
   export G1_TELEOP_ARM="${G1_TELEOP_ARM:-G1_29}"
+  export G1_TELEOP_INPUT_MODE="${G1_TELEOP_INPUT_MODE:-controller}"
+  export G1_TELEOP_EE="${G1_TELEOP_EE:-brainco}"
   export G1_TELEOP_DISPLAY_MODE="${G1_TELEOP_DISPLAY_MODE:-ego}"
   export G1_TELEIMAGER_VIDEO_ID="${G1_TELEIMAGER_VIDEO_ID:-2}"
   export G1_TELEOP_DDS_IFACE="${G1_TELEOP_DDS_IFACE:-$(teleop_detect_dds_iface)}"
@@ -142,4 +144,14 @@ teleop_export_common_env() {
   export G1_TELEOP_IMG_SERVER_IP="${G1_TELEOP_IMG_SERVER_IP:-$(teleop_detect_img_server_ip)}"
   export G1_TELEOP_UNITREE_SETUP="${G1_TELEOP_UNITREE_SETUP:-${HOME}/unitree_ros2/setup.sh}"
   export G1_TELEOP_CYCLONEDDS_HOME="${G1_TELEOP_CYCLONEDDS_HOME:-${HOME}/unitree_ros2/cyclonedds_ws/install/cyclonedds}"
+
+  case "${G1_TELEOP_INPUT_MODE}" in
+    hand|controller) ;;
+    *) teleop_die "Unsupported G1_TELEOP_INPUT_MODE='${G1_TELEOP_INPUT_MODE}'. Expected 'hand' or 'controller'." ;;
+  esac
+
+  case "${G1_TELEOP_EE}" in
+    dex1|dex3|inspire_ftp|inspire_dfx|brainco) ;;
+    *) teleop_die "Unsupported G1_TELEOP_EE='${G1_TELEOP_EE}'." ;;
+  esac
 }

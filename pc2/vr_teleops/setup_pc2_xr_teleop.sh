@@ -16,6 +16,8 @@ DEFAULT_DDS_IFACE=""
 DEFAULT_WIFI_IFACE=""
 DEFAULT_VIDEO_ID=""
 DEFAULT_ARM="G1_29"
+DEFAULT_INPUT_MODE="controller"
+DEFAULT_EE="brainco"
 
 CONDA_ENV="${DEFAULT_CONDA_ENV}"
 XR_REPO_DIR="${DEFAULT_XR_REPO}"
@@ -28,6 +30,8 @@ DDS_IFACE="${DEFAULT_DDS_IFACE}"
 WIFI_IFACE="${DEFAULT_WIFI_IFACE}"
 VIDEO_ID="${DEFAULT_VIDEO_ID}"
 ARM_MODEL="${DEFAULT_ARM}"
+INPUT_MODE="${DEFAULT_INPUT_MODE}"
+EE_TYPE="${DEFAULT_EE}"
 SKIP_APT=0
 SKIP_DDS=0
 SKIP_BRAINCO_SERVICE=0
@@ -58,6 +62,8 @@ Options:
   --wifi-iface IFACE        Interface whose IPv4 should be advertised to Quest. Default: default route.
   --video-id N              teleimager head_camera video_id. Default: auto-detect, else 2.
   --arm G1_23|G1_29         Arm model used by xr_teleoperate. Default: ${DEFAULT_ARM}
+  --input-mode MODE         XR tracking mode: hand or controller. Default: ${DEFAULT_INPUT_MODE}
+  --ee TYPE                 End effector: dex1, dex3, inspire_ftp, inspire_dfx, brainco. Default: ${DEFAULT_EE}
   --conda-env NAME          Conda env name. Default: ${DEFAULT_CONDA_ENV}
   --xr-repo DIR             xr_teleoperate checkout path. Default: ${DEFAULT_XR_REPO}
   --brainco-dir DIR         brainco_hand_service checkout path. Default: ${DEFAULT_BRAINCO_SERVICE_DIR}
@@ -77,6 +83,8 @@ while [[ $# -gt 0 ]]; do
     --wifi-iface) WIFI_IFACE="$2"; shift 2 ;;
     --video-id) VIDEO_ID="$2"; shift 2 ;;
     --arm) ARM_MODEL="$2"; shift 2 ;;
+    --input-mode) INPUT_MODE="$2"; shift 2 ;;
+    --ee) EE_TYPE="$2"; shift 2 ;;
     --conda-env) CONDA_ENV="$2"; shift 2 ;;
     --xr-repo) XR_REPO_DIR="$2"; shift 2 ;;
     --brainco-dir) BRAINCO_SERVICE_DIR="$2"; shift 2 ;;
@@ -92,6 +100,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "${ARM_MODEL}" == "G1_23" || "${ARM_MODEL}" == "G1_29" ]] || die "--arm must be G1_23 or G1_29"
+[[ "${INPUT_MODE}" == "hand" || "${INPUT_MODE}" == "controller" ]] || die "--input-mode must be hand or controller"
+case "${EE_TYPE}" in
+  dex1|dex3|inspire_ftp|inspire_dfx|brainco) ;;
+  *) die "--ee must be one of dex1, dex3, inspire_ftp, inspire_dfx, brainco" ;;
+esac
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
@@ -411,6 +424,8 @@ export G1_TELEOP_WIFI_IFACE="${WIFI_IFACE}"
 export G1_TELEOP_IMG_SERVER_IP="${img_server_ip}"
 export G1_TELEIMAGER_VIDEO_ID="${VIDEO_ID}"
 export G1_TELEOP_ARM="${ARM_MODEL}"
+export G1_TELEOP_INPUT_MODE="${INPUT_MODE}"
+export G1_TELEOP_EE="${EE_TYPE}"
 export G1_TELEOP_DISPLAY_MODE="ego"
 export G1_TELEOP_XR_REPO="${XR_REPO_DIR}"
 export G1_TELEOP_BRAINCO_SERVICE_DIR="${BRAINCO_SERVICE_DIR}"
