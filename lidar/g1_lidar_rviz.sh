@@ -42,7 +42,7 @@ if [[ -z "${DISPLAY:-}" ]]; then
 [ERROR] DISPLAY is empty. RViz needs a GUI display.
 
 Reconnect from your local Ubuntu desktop with:
-  ssh -Y dwei@192.168.123.164
+  ssh -Y dwei@192.168.1.201
 
 Then run:
   ~/bin/g1_lidar_rviz.sh
@@ -50,7 +50,8 @@ ERR
   exit 1
 fi
 
-# RViz over ssh -Y often needs software rendering.
+# RViz over ssh -Y from Linux often needs software rendering. macOS XQuartz may
+# instead require indirect GLX; check_opengl falls back to that mode if needed.
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 
 check_opengl() {
@@ -73,6 +74,18 @@ check_opengl() {
     grep -E 'OpenGL vendor string|OpenGL renderer string|OpenGL version string' "$log_file" || true
     rm -f "$log_file"
     return 0
+  fi
+
+  if [[ "${LIBGL_ALWAYS_INDIRECT:-0}" != "1" || "${LIBGL_ALWAYS_SOFTWARE:-1}" != "0" ]]; then
+    echo "[WARN] OpenGL preflight failed with current GL settings; trying indirect GLX for XQuartz..."
+    if LIBGL_ALWAYS_SOFTWARE=0 LIBGL_ALWAYS_INDIRECT=1 glxinfo -B >"$log_file" 2>&1; then
+      export LIBGL_ALWAYS_SOFTWARE=0
+      export LIBGL_ALWAYS_INDIRECT=1
+      echo "[INFO] OpenGL preflight passed with indirect GLX:"
+      grep -E 'OpenGL vendor string|OpenGL renderer string|OpenGL version string' "$log_file" || true
+      rm -f "$log_file"
+      return 0
+    fi
   fi
 
   echo "[ERROR] OpenGL/GLX preflight failed before RViz could start." >&2

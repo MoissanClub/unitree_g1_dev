@@ -53,13 +53,13 @@ From your local Ubuntu desktop, copy the scripts to PC2.
 Example:
 
 ```bash
-scp g1_lidar_one_time_setup_pc2.sh g1_lidar_rviz.sh dwei@192.168.123.164:~
+scp g1_lidar_one_time_setup_pc2.sh g1_lidar_rviz.sh dwei@192.168.1.201:~
 ```
 
 Then SSH into PC2 with X11 forwarding:
 
 ```bash
-ssh -Y dwei@192.168.123.164
+ssh -Y dwei@192.168.1.201
 ```
 
 ---
@@ -139,7 +139,7 @@ A useful sign is an address on the G1 subnet:
 From your local Ubuntu desktop:
 
 ```bash
-ssh -Y dwei@192.168.123.164
+ssh -Y dwei@192.168.1.201
 ```
 
 Then on PC2:
@@ -386,7 +386,7 @@ RViz is a GUI app and has no display.
 Reconnect with X11 forwarding:
 
 ```bash
-ssh -Y dwei@192.168.123.164
+ssh -Y dwei@192.168.1.201
 ```
 
 Then check:
@@ -423,7 +423,7 @@ defaults write org.xquartz.X11 enable_iglx -bool true
 Fully quit and restart XQuartz, reconnect with:
 
 ```bash
-ssh -Y dwei@192.168.123.164
+ssh -Y dwei@192.168.1.201
 ```
 
 Then rerun:
@@ -466,7 +466,7 @@ chmod 600 ~/.Xauthority
 Then reconnect with:
 
 ```bash
-ssh -Y dwei@192.168.123.164
+ssh -Y dwei@192.168.1.201
 ```
 
 ### RViz opens, but no points are visible
@@ -534,7 +534,7 @@ Check the G1 network:
 
 ```bash
 ping -c 3 192.168.123.120
-ping -c 3 192.168.123.164
+ping -c 3 192.168.1.201
 ```
 
 Check your CycloneDDS interface:
