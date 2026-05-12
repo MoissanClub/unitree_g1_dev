@@ -135,3 +135,42 @@ python teleop_hand_and_arm.py --input-mode controller --arm G1_23 --ee brainco -
 - open Browser `https://PC2-WiFi-IP:8012/?ws=wss://PC2-WiFi-IP:8012`
 - click PassThrough at bottom of page
 - You should see both the surroundings and G1's camera view in the middle, and G1 arms will follow controller moves
+
+## Fix realsense camera 
+### unitree vendor service holding camera
+PC2 /etc/init.d/ has master_service and ota_pipe. Both can be stopped/disabled via systemctl. But stop ota_pipe may cause Unitree Explore App report firmware command timeout. So not necessary.
+```
+sudo systemctl stop master_service ota_pipe
+sudo systemctl disable master_service ota_pipe
+```
+
+master_service manages /unitree/etc/master_service/service/video_hub_pc4 and video_hub_pc4_chest. Stop and remove via mscli
+```
+sudo /unitree/sbin/mscli stopservice video_hub_pc4
+sudo /unitree/sbin/mscli stopservice video_hub_pc4_chest
+sudo /unitree/sbin/mscli removeservice video_hub_pc4
+sudo /unitree/sbin/mscli removeservice video_hub_pc4_chest
+```
+
+There is also ota_pipe under service/, it's just proxy to systemctl.
+
+video_hub_pc4 is responsible for publishing camera DDS rt/frontvideostream
+
+### update cam_config_server and run
+new config
+```yaml
+type: realsense
+image_shape: [720, 1280]
+binocular: false
+video_id: null
+serial_number: xxxxxxx
+physical_path: null
+```
+- serial_number is from `teleimager-server --cf --rs` note without `--rs` flag, it'll show a different serial number
+- (tv) `pip install pyrealsense2` and `teleimager-server --rs`
+
+## hand and motion
+controller can add `--motion` so Unitree remote and VR controller joystick can move robot. But if input mode is hand, no way to control motion.
+```
+python teleop_hand_and_arm.py --arm G1_23 --ee brainco --network-interface eth0 --img-server-ip PC2-WiFi-IP --display-mode ego
+```
