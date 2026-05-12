@@ -227,6 +227,7 @@ main() {
 
   sudo_apt_install_missing \
     git curl xauth x11-apps mesa-utils \
+    libgl1-mesa-dri \
     ros-"$ROS_DISTRO_NAME"-rviz2 \
     ros-"$ROS_DISTRO_NAME"-rviz-common \
     ros-"$ROS_DISTRO_NAME"-rviz-default-plugins \

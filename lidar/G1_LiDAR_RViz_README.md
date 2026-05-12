@@ -396,6 +396,52 @@ echo $DISPLAY
 xeyes
 ```
 
+### `libGL error: failed to load driver: swrast` or `Failed to create an OpenGL context`
+
+This happens before ROS topic display matters. RViz/Ogre cannot create an
+OpenGL/GLX context through the forwarded X server.
+
+On PC2, first make sure Mesa software rendering support is installed:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libgl1-mesa-dri mesa-utils
+```
+
+Then test OpenGL from the same SSH session:
+
+```bash
+glxinfo -B
+```
+
+If you are SSHing from macOS with XQuartz, also enable indirect GLX on the Mac:
+
+```bash
+defaults write org.xquartz.X11 enable_iglx -bool true
+```
+
+Fully quit and restart XQuartz, reconnect with:
+
+```bash
+ssh -Y dwei@192.168.123.164
+```
+
+Then rerun:
+
+```bash
+~/bin/g1_lidar_rviz.sh
+```
+
+If `glxinfo -B` still fails or RViz still reports `BadValue`, use a Linux GUI
+path instead of Mac XQuartz forwarding:
+
+```text
+PC2 monitor
+VNC/NoMachine into PC2
+Ubuntu desktop with ssh -Y
+RViz on another Ubuntu machine on the same ROS 2 / DDS network
+```
+
 ### `/usr/bin/xauth: file ~/.Xauthority does not exist`
 
 This is often not fatal. Check:

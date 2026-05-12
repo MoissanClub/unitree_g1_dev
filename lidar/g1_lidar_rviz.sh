@@ -35,6 +35,7 @@ MAP_FRAME="${G1_MAP_FRAME:-map}"
 # Set to 1 to publish a visualization-only static transform map -> livox_frame.
 # This removes RViz's "no tf data" global warning. It is NOT SLAM.
 USE_DUMMY_TF="${G1_USE_DUMMY_TF:-1}"
+SKIP_GL_CHECK="${G1_SKIP_GL_CHECK:-0}"
 
 if [[ -z "${DISPLAY:-}" ]]; then
   cat >&2 <<ERR
@@ -52,11 +53,60 @@ fi
 # RViz over ssh -Y often needs software rendering.
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 
+check_opengl() {
+  if [[ "$SKIP_GL_CHECK" == "1" ]]; then
+    echo "[WARN] Skipping OpenGL preflight because G1_SKIP_GL_CHECK=1."
+    return 0
+  fi
+
+  if ! command -v glxinfo >/dev/null 2>&1; then
+    echo "[WARN] glxinfo is not installed; skipping OpenGL preflight."
+    echo "[WARN] Install mesa-utils on PC2 to diagnose RViz GLX failures."
+    return 0
+  fi
+
+  local log_file
+  log_file="$(mktemp /tmp/g1_lidar_glxinfo.XXXXXX.log)"
+
+  if glxinfo -B >"$log_file" 2>&1; then
+    echo "[INFO] OpenGL preflight passed:"
+    grep -E 'OpenGL vendor string|OpenGL renderer string|OpenGL version string' "$log_file" || true
+    rm -f "$log_file"
+    return 0
+  fi
+
+  echo "[ERROR] OpenGL/GLX preflight failed before RViz could start." >&2
+  cat "$log_file" >&2
+  rm -f "$log_file"
+
+  cat >&2 <<'ERR'
+
+Most likely fixes:
+  1. On PC2, install Mesa's software rasterizer:
+       sudo apt-get update
+       sudo apt-get install -y libgl1-mesa-dri mesa-utils
+
+  2. If you are forwarding from macOS XQuartz, enable indirect GLX on the Mac:
+       defaults write org.xquartz.X11 enable_iglx -bool true
+     Then fully quit and restart XQuartz, reconnect with ssh -Y, and retry.
+
+  3. If XQuartz still cannot create a GLX context for RViz/Ogre, use a real
+     Linux X server path instead: PC2 monitor, VNC/NoMachine to PC2, or run RViz
+     from an Ubuntu machine on the same ROS 2/DDS network.
+
+To bypass this check temporarily:
+  G1_SKIP_GL_CHECK=1 ~/bin/g1_lidar_rviz.sh
+ERR
+  exit 1
+}
+
 echo "[INFO] DISPLAY=$DISPLAY"
 echo "[INFO] Topic=$TOPIC"
 echo "[INFO] LiDAR frame=$LIDAR_FRAME"
 echo "[INFO] RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-}"
 echo "[INFO] ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-<unset/domain 0>}"
+
+check_opengl
 
 # Refresh discovery.
 ros2 daemon stop >/dev/null 2>&1 || true
