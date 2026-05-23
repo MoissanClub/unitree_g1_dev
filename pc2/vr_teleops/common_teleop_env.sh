@@ -139,6 +139,8 @@ teleop_export_common_env() {
   export G1_TELEOP_EE="${G1_TELEOP_EE:-brainco}"
   export G1_TELEOP_DISPLAY_MODE="${G1_TELEOP_DISPLAY_MODE:-ego}"
   export G1_TELEIMAGER_VIDEO_ID="${G1_TELEIMAGER_VIDEO_ID:-2}"
+  export G1_TELEIMAGER_CAMERA_BACKEND="${G1_TELEIMAGER_CAMERA_BACKEND:-opencv}"
+  export G1_TELEIMAGER_REALSENSE_SERIAL="${G1_TELEIMAGER_REALSENSE_SERIAL:-}"
   export G1_TELEOP_DDS_IFACE="${G1_TELEOP_DDS_IFACE:-$(teleop_detect_dds_iface)}"
   export G1_TELEOP_WIFI_IFACE="${G1_TELEOP_WIFI_IFACE:-$(teleop_detect_wifi_iface)}"
   export G1_TELEOP_IMG_SERVER_IP="${G1_TELEOP_IMG_SERVER_IP:-$(teleop_detect_img_server_ip)}"
@@ -153,5 +155,10 @@ teleop_export_common_env() {
   case "${G1_TELEOP_EE}" in
     dex1|dex3|inspire_ftp|inspire_dfx|brainco) ;;
     *) teleop_die "Unsupported G1_TELEOP_EE='${G1_TELEOP_EE}'." ;;
+  esac
+
+  case "${G1_TELEIMAGER_CAMERA_BACKEND}" in
+    opencv|realsense|uvc) ;;
+    *) teleop_die "Unsupported G1_TELEIMAGER_CAMERA_BACKEND='${G1_TELEIMAGER_CAMERA_BACKEND}'. Expected 'realsense', 'uvc', or 'opencv'." ;;
   esac
 }

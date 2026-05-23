@@ -15,6 +15,8 @@ DEFAULT_CONFIG_DIR="${HOME}/.config/xr_teleoperate"
 DEFAULT_DDS_IFACE=""
 DEFAULT_WIFI_IFACE=""
 DEFAULT_VIDEO_ID=""
+DEFAULT_CAMERA_BACKEND="opencv"
+DEFAULT_REALSENSE_SERIAL=""
 DEFAULT_ARM="G1_29"
 DEFAULT_INPUT_MODE="controller"
 DEFAULT_EE="brainco"
@@ -29,12 +31,15 @@ CONFIG_DIR="${DEFAULT_CONFIG_DIR}"
 DDS_IFACE="${DEFAULT_DDS_IFACE}"
 WIFI_IFACE="${DEFAULT_WIFI_IFACE}"
 VIDEO_ID="${DEFAULT_VIDEO_ID}"
+CAMERA_BACKEND="${DEFAULT_CAMERA_BACKEND}"
+REALSENSE_SERIAL="${DEFAULT_REALSENSE_SERIAL}"
 ARM_MODEL="${DEFAULT_ARM}"
 INPUT_MODE="${DEFAULT_INPUT_MODE}"
 EE_TYPE="${DEFAULT_EE}"
 SKIP_APT=0
 SKIP_DDS=0
 SKIP_BRAINCO_SERVICE=0
+RELEASE_UNITREE_CAMERA=0
 NO_PULL=0
 
 log() {
@@ -60,7 +65,9 @@ This script follows TELE_OP.md for PC2, but reuses the existing local
 Options:
   --dds-iface IFACE         DDS interface for robot traffic. Default: auto-detect.
   --wifi-iface IFACE        Interface whose IPv4 should be advertised to Quest. Default: default route.
-  --video-id N              teleimager head_camera video_id. Default: auto-detect, else 2.
+  --camera-backend TYPE     teleimager camera backend: opencv or realsense. Default: ${DEFAULT_CAMERA_BACKEND}
+  --video-id N              OpenCV head_camera video_id. Default: auto-detect, else 2.
+  --realsense-serial SERIAL RealSense serial_number from 'teleimager-server --cf --rs'. Default: auto-detect when possible.
   --arm G1_23|G1_29         Arm model used by xr_teleoperate. Default: ${DEFAULT_ARM}
   --input-mode MODE         XR tracking mode: hand or controller. Default: ${DEFAULT_INPUT_MODE}
   --ee TYPE                 End effector: dex1, dex3, inspire_ftp, inspire_dfx, brainco. Default: ${DEFAULT_EE}
@@ -72,6 +79,7 @@ Options:
   --skip-apt                Do not apt-install packages.
   --skip-dds                Do not call ../setup_unitree_g1_pc2_dds.sh.
   --skip-brainco-service    Do not clone/build brainco_hand_service.
+  --release-unitree-camera  Stop/remove Unitree video_hub_pc4 services that can hold the RealSense camera.
   --no-pull                 Do not git pull existing repositories.
   -h, --help                Show this help.
 EOF
@@ -81,7 +89,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dds-iface) DDS_IFACE="$2"; shift 2 ;;
     --wifi-iface) WIFI_IFACE="$2"; shift 2 ;;
+    --camera-backend) CAMERA_BACKEND="$2"; shift 2 ;;
     --video-id) VIDEO_ID="$2"; shift 2 ;;
+    --realsense-serial) REALSENSE_SERIAL="$2"; shift 2 ;;
     --arm) ARM_MODEL="$2"; shift 2 ;;
     --input-mode) INPUT_MODE="$2"; shift 2 ;;
     --ee) EE_TYPE="$2"; shift 2 ;;
@@ -93,12 +103,14 @@ while [[ $# -gt 0 ]]; do
     --skip-apt) SKIP_APT=1; shift ;;
     --skip-dds) SKIP_DDS=1; shift ;;
     --skip-brainco-service) SKIP_BRAINCO_SERVICE=1; shift ;;
+    --release-unitree-camera) RELEASE_UNITREE_CAMERA=1; shift ;;
     --no-pull) NO_PULL=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
 done
 
+[[ "${CAMERA_BACKEND}" == "opencv" || "${CAMERA_BACKEND}" == "realsense" ]] || die "--camera-backend must be opencv or realsense"
 [[ "${ARM_MODEL}" == "G1_23" || "${ARM_MODEL}" == "G1_29" ]] || die "--arm must be G1_23 or G1_29"
 [[ "${INPUT_MODE}" == "hand" || "${INPUT_MODE}" == "controller" ]] || die "--input-mode must be hand or controller"
 case "${EE_TYPE}" in
@@ -192,6 +204,26 @@ detect_realsense_video_id() {
   fi
 
   printf '2\n'
+}
+
+detect_realsense_serial() {
+  if [[ -n "${REALSENSE_SERIAL}" ]]; then
+    printf '%s\n' "${REALSENSE_SERIAL}"
+    return 0
+  fi
+
+  if [[ -d "${XR_REPO_DIR}/teleop/teleimager" ]]; then
+    local teleimager_output=""
+    local detected_serial=""
+    teleimager_output="$(run_in_conda teleimager-server --cf --rs 2>&1 || true)"
+    detected_serial="$(printf '%s\n' "${teleimager_output}" | sed -n 's/.*serial[^0-9]*\([0-9][0-9]*\).*/\1/ip' | head -n1)"
+    if [[ -n "${detected_serial}" ]]; then
+      printf '%s\n' "${detected_serial}"
+      return 0
+    fi
+  fi
+
+  printf 'null\n'
 }
 
 install_apt_deps() {
@@ -307,6 +339,11 @@ ensure_xr_teleoperate() {
   run_in_conda python -m pip install -e "${XR_REPO_DIR}/teleop/teleimager[server]"
   run_in_conda python -m pip install -e "${XR_REPO_DIR}/teleop/robot_control/dex-retargeting"
   run_in_conda python -m pip install 'params-proto<3' 'vuer[all]==0.0.60'
+
+  if [[ "${CAMERA_BACKEND}" == "realsense" ]]; then
+    log "Installing pyrealsense2 for teleimager RealSense mode"
+    run_in_conda python -m pip install pyrealsense2
+  fi
 }
 
 ensure_brainco_hand_service() {
@@ -339,6 +376,16 @@ ensure_certs() {
     -subj "/CN=$(hostname -f 2>/dev/null || hostname)"
 }
 
+release_unitree_camera_services() {
+  [[ "${RELEASE_UNITREE_CAMERA}" -eq 1 ]] || return 0
+
+  warn "Stopping Unitree vendor camera services so teleimager can own the RealSense camera."
+  run sudo /unitree/sbin/mscli stopservice video_hub_pc4 || warn "Could not stop video_hub_pc4."
+  run sudo /unitree/sbin/mscli stopservice video_hub_pc4_chest || warn "Could not stop video_hub_pc4_chest."
+  run sudo /unitree/sbin/mscli removeservice video_hub_pc4 || warn "Could not remove video_hub_pc4."
+  run sudo /unitree/sbin/mscli removeservice video_hub_pc4_chest || warn "Could not remove video_hub_pc4_chest."
+}
+
 configure_teleimager() {
   local config_file=""
   config_file="$(find "${XR_REPO_DIR}/teleop/teleimager" -type f -name 'cam_config_server.yaml' | head -n1 || true)"
@@ -347,18 +394,23 @@ configure_teleimager() {
     return 0
   fi
 
-  if [[ -z "${VIDEO_ID}" ]]; then
+  if [[ "${CAMERA_BACKEND}" == "opencv" && -z "${VIDEO_ID}" ]]; then
     VIDEO_ID="$(detect_realsense_video_id)"
   fi
+  if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
+    REALSENSE_SERIAL="$(detect_realsense_serial)"
+  fi
 
-  log "Patching ${config_file} for PC2 head camera video_id=${VIDEO_ID}"
-  python3 - "${config_file}" "${VIDEO_ID}" <<'PY'
+  log "Patching ${config_file} for PC2 head camera backend=${CAMERA_BACKEND}"
+  python3 - "${config_file}" "${CAMERA_BACKEND}" "${VIDEO_ID:-null}" "${REALSENSE_SERIAL:-null}" <<'PY'
 import pathlib
 import re
 import sys
 
 path = pathlib.Path(sys.argv[1])
-video_id = sys.argv[2]
+backend = sys.argv[2]
+video_id = sys.argv[3]
+realsense_serial = sys.argv[4]
 text = path.read_text()
 
 def update_section_value(src: str, section: str, key: str, value: str) -> str:
@@ -376,14 +428,26 @@ def update_section_value(src: str, section: str, key: str, value: str) -> str:
 
     return src[:match.start(2)] + body + src[match.end(2):]
 
-for key, value in (
-    ("type", "opencv"),
-    ("image_shape", "[480, 640]"),
-    ("binocular", "false"),
-    ("video_id", video_id),
-    ("serial_number", "null"),
-    ("physical_path", "null"),
-):
+if backend == "realsense":
+    head_camera_values = (
+        ("type", "realsense"),
+        ("image_shape", "[720, 1280]"),
+        ("binocular", "false"),
+        ("video_id", "null"),
+        ("serial_number", realsense_serial),
+        ("physical_path", "null"),
+    )
+else:
+    head_camera_values = (
+        ("type", "opencv"),
+        ("image_shape", "[480, 640]"),
+        ("binocular", "false"),
+        ("video_id", video_id),
+        ("serial_number", "null"),
+        ("physical_path", "null"),
+    )
+
+for key, value in head_camera_values:
     text = update_section_value(text, "head_camera", key, value)
 
 for section in ("left_wrist_camera", "right_wrist_camera"):
@@ -407,8 +471,11 @@ write_runtime_config() {
   fi
   [[ -n "${WIFI_IFACE}" ]] || WIFI_IFACE="${DDS_IFACE}"
 
-  if [[ -z "${VIDEO_ID}" ]]; then
+  if [[ "${CAMERA_BACKEND}" == "opencv" && -z "${VIDEO_ID}" ]]; then
     VIDEO_ID="$(detect_realsense_video_id)"
+  fi
+  if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
+    REALSENSE_SERIAL="$(detect_realsense_serial)"
   fi
 
   local img_server_ip=""
@@ -423,6 +490,8 @@ export G1_TELEOP_DDS_IFACE="${DDS_IFACE}"
 export G1_TELEOP_WIFI_IFACE="${WIFI_IFACE}"
 export G1_TELEOP_IMG_SERVER_IP="${img_server_ip}"
 export G1_TELEIMAGER_VIDEO_ID="${VIDEO_ID}"
+export G1_TELEIMAGER_CAMERA_BACKEND="${CAMERA_BACKEND}"
+export G1_TELEIMAGER_REALSENSE_SERIAL="${REALSENSE_SERIAL}"
 export G1_TELEOP_ARM="${ARM_MODEL}"
 export G1_TELEOP_INPUT_MODE="${INPUT_MODE}"
 export G1_TELEOP_EE="${EE_TYPE}"
@@ -452,6 +521,7 @@ main() {
   ensure_xr_teleoperate
   ensure_brainco_hand_service
   ensure_certs
+  release_unitree_camera_services
   configure_teleimager
   write_runtime_config
 

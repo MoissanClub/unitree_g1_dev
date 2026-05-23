@@ -61,6 +61,7 @@ teleop stack by:
 - cloning or updating `xr_teleoperate`
 - optionally cloning and building `brainco_hand_service`
 - generating self-signed TLS certs under `~/.config/xr_teleoperate/`
+- configuring teleimager for either OpenCV `/dev/videoN` or native RealSense capture
 - writing runtime configuration to `~/.config/xr_teleoperate/pc2_teleop.env`
 
 ## One-Time Setup
@@ -92,6 +93,7 @@ Other useful options:
 ./setup_pc2_xr_teleop.sh --skip-brainco-service
 ./setup_pc2_xr_teleop.sh --arm G1_23
 ./setup_pc2_xr_teleop.sh --input-mode hand --ee brainco
+./setup_pc2_xr_teleop.sh --camera-backend realsense --realsense-serial 123456789
 ```
 
 Important setup choices:
@@ -100,6 +102,8 @@ Important setup choices:
 - `--input-mode hand`: Quest hand tracking drives the arm targets.
 - `--ee brainco`: use BrainCo dexterous hands as the end effector.
 - `--ee dex1|dex3|inspire_ftp|inspire_dfx`: select other upstream-supported end effectors.
+- `--camera-backend opencv`: use the generic UVC `/dev/videoN` path at `480x640`.
+- `--camera-backend realsense`: use teleimager's RealSense path at `720x1280`; this also installs `pyrealsense2` and makes `start_teleimager.sh` pass `--rs`.
 
 ## Per-Session Runtime
 
@@ -144,6 +148,8 @@ That file is written by `setup_pc2_xr_teleop.sh` and contains values such as:
 - `G1_TELEOP_WIFI_IFACE`
 - `G1_TELEOP_IMG_SERVER_IP`
 - `G1_TELEIMAGER_VIDEO_ID`
+- `G1_TELEIMAGER_CAMERA_BACKEND`
+- `G1_TELEIMAGER_REALSENSE_SERIAL`
 - `G1_TELEOP_ARM`
 - `G1_TELEOP_INPUT_MODE`
 - `G1_TELEOP_EE`
@@ -156,6 +162,53 @@ The most important mode controls are:
 
 - `G1_TELEOP_INPUT_MODE=controller|hand`
 - `G1_TELEOP_EE=dex1|dex3|inspire_ftp|inspire_dfx|brainco`
+- `G1_TELEIMAGER_CAMERA_BACKEND=opencv|realsense`
+
+## RealSense Camera
+
+The G1 head camera can be used through teleimager's native RealSense backend
+instead of the generic OpenCV UVC backend. This is the preferred path when you
+want the full `720x1280` RealSense stream.
+
+First let teleimager list RealSense devices and note the serial number:
+
+```bash
+cd ~/xr_teleoperate/teleop/teleimager
+conda activate tv
+teleimager-server --cf --rs
+```
+
+Then configure this launcher layer for RealSense:
+
+```bash
+./setup_pc2_xr_teleop.sh --camera-backend realsense --realsense-serial SERIAL_FROM_CF_RS
+```
+
+If the serial is omitted, the setup script tries to parse it from
+`teleimager-server --cf --rs`; if detection is ambiguous, rerun setup with
+`--realsense-serial`.
+
+On Unitree PC2, the vendor camera services can keep the RealSense device open.
+If `teleimager-server --rs` cannot acquire the camera, rerun setup once with:
+
+```bash
+./setup_pc2_xr_teleop.sh --camera-backend realsense --realsense-serial SERIAL_FROM_CF_RS --release-unitree-camera
+```
+
+That stops and removes `video_hub_pc4` and `video_hub_pc4_chest` via
+`/unitree/sbin/mscli`, matching the manual TELE_OP.md fix. It does not disable
+`ota_pipe`, because doing that can cause firmware command timeouts in the
+Unitree Explore app.
+
+After setup, launch normally:
+
+```bash
+./start_teleimager.sh
+```
+
+For RealSense configs, `start_teleimager.sh` automatically runs
+`teleimager-server --rs`. You can verify the stream from another browser at
+`https://PC2-WiFi-IP:60001`.
 
 ## Hand Tracking And BrainCo
 
