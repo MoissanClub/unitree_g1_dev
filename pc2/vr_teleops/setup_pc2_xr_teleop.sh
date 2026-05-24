@@ -358,11 +358,32 @@ ensure_brainco_hand_service() {
 ensure_certs() {
   local cert_path="${CONFIG_DIR}/cert.pem"
   local key_path="${CONFIG_DIR}/key.pem"
+  local cert_iface="${WIFI_IFACE}"
+  local cert_ip=""
+  local cert_host=""
+  local san_entries="DNS:localhost,IP:127.0.0.1"
   mkdir -p "${CONFIG_DIR}"
 
+  if [[ -z "${cert_iface}" ]]; then
+    cert_iface="$(default_route_iface)"
+  fi
+  if [[ -n "${cert_iface}" ]]; then
+    cert_ip="$(iface_ipv4 "${cert_iface}")"
+  fi
+  cert_host="$(hostname -f 2>/dev/null || hostname)"
+  if [[ -n "${cert_host}" ]]; then
+    san_entries="DNS:${cert_host},${san_entries}"
+  fi
+  if [[ -n "${cert_ip}" ]]; then
+    san_entries="${san_entries},IP:${cert_ip}"
+  fi
+
   if [[ -f "${cert_path}" && -f "${key_path}" ]]; then
-    log "Reusing existing TLS certs under ${CONFIG_DIR}"
-    return 0
+    if [[ -z "${cert_ip}" ]] || openssl x509 -in "${cert_path}" -noout -ext subjectAltName 2>/dev/null | grep -q "IP Address:${cert_ip}"; then
+      log "Reusing existing TLS certs under ${CONFIG_DIR}"
+      return 0
+    fi
+    warn "Existing TLS cert does not include ${cert_ip}; regenerating it for the current Wi-Fi IP."
   fi
 
   log "Generating self-signed TLS certs for teleimager and xr_teleoperate"
@@ -373,7 +394,8 @@ ensure_certs() {
     -newkey rsa:2048 \
     -keyout "${key_path}" \
     -out "${cert_path}" \
-    -subj "/CN=$(hostname -f 2>/dev/null || hostname)"
+    -subj "/CN=${cert_host:-localhost}" \
+    -addext "subjectAltName=${san_entries}"
 }
 
 release_unitree_camera_services() {

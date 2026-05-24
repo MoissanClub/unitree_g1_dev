@@ -115,6 +115,13 @@ After setup completes, start the teleop services on PC2 in separate terminals:
 ./start_xr_teleoperate.sh
 ```
 
+Override the configured XR input mode for a single launch with:
+
+```bash
+./start_xr_teleoperate.sh --input-mode controller
+./start_xr_teleoperate.sh --input-mode hand
+```
+
 The XR launcher prints the Quest browser URL after startup. The advertised IP
 is derived from the configured or detected Wi-Fi/default-route interface.
 
@@ -238,7 +245,8 @@ In practice, that means:
 - no Quest controllers are required for arm and hand teleoperation in this mode
 
 If you switch back to controller teleop later, rerun setup with
-`--input-mode controller` or edit `pc2_teleop.env` directly.
+`--input-mode controller`, edit `pc2_teleop.env` directly, or launch once with
+`./start_xr_teleoperate.sh --input-mode controller`.
 
 ## Notes
 
