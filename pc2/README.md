@@ -9,8 +9,11 @@ operation on the robot.
 
 Currently included:
 
+- `build_mt76x2u_on_pc2.sh`: build and install MT7612U kernel modules from the matching NVIDIA L4T source tree. Run with `sudo`.
 - `g1_pc2_wifi_setup.sh`: configure Wi-Fi on PC2 using NetworkManager. Run with `sudo`.
 - `g1_pc2_dual_wifi_setup.sh`: connect PC2 to an uplink Wi-Fi network while also exposing its own AP for direct SSH access. Run with `sudo`.
+- `g1_pc2_usb_wifi_ap_setup.sh`: configure a USB Wi-Fi adapter as a local AP while leaving the built-in Wi-Fi uplink alone. Run with `sudo`.
+- `g1_pc2_usb_wifi_ap_vht80_setup.sh`: configure the USB adapter as a dedicated 5 GHz, 80 MHz `hostapd` AP. Run with `sudo`.
 - `g1_pc2_boot_time_sync_setup.sh`: install a one-shot boot-time clock sync service. Run with `sudo`.
 - `g1_pc2_apt_mirror_setup.sh`: switch Ubuntu APT sources on PC2 to reliable official Ubuntu mirrors. Run with `sudo`.
 - `brainco/setup_g1_brainco.sh`: set up the BrainCo hand software in the user's home directory. Run as the normal login user, not with `sudo`.
@@ -28,8 +31,11 @@ The intended one-time setup workflow is:
 
 Use the following invocation mode for each script:
 
+- `build_mt76x2u_on_pc2.sh`: run with `sudo` on PC2, never on the development Mac.
 - `g1_pc2_wifi_setup.sh`: run with `sudo`.
 - `g1_pc2_dual_wifi_setup.sh`: run with `sudo`.
+- `g1_pc2_usb_wifi_ap_setup.sh`: run with `sudo`.
+- `g1_pc2_usb_wifi_ap_vht80_setup.sh`: run with `sudo`.
 - `g1_pc2_boot_time_sync_setup.sh`: run with `sudo`.
 - `g1_pc2_apt_mirror_setup.sh`: run with `sudo`.
 - `brainco/setup_g1_brainco.sh`: run as the normal login user, not with `sudo`.
@@ -142,6 +148,95 @@ If setup succeeds, clients that join the local AP can SSH to:
 
 ```bash
 ssh unitree@10.42.0.1
+```
+
+## Optional: USB Wi-Fi Adapter As Local AP
+
+If PC2 already gets internet through the built-in Wi-Fi, use this script to make
+the USB MT7612U adapter provide a local access point for SSH/control traffic.
+This avoids single-radio client+AP concurrency: the built-in Wi-Fi remains the
+uplink, and the USB dongle is AP-only.
+
+First confirm the adapter is present:
+
+```bash
+lsusb | grep -i '0e8d:7612'
+iw dev
+```
+
+On L4T 36.4.3, the stock `5.15.148-tegra` configuration does not build MT76.
+The matching NVIDIA `public_sources.tbz2` download is about 216 MiB, its nested
+kernel archive is about 149 MiB, and the extracted source plus build artifacts
+use about 1.3 GiB on PC2. Keeping both archives brings the complete build
+directory to about 1.6 GiB. Once that source is extracted at the default
+location, build and install the six required modules with:
+
+```bash
+sudo ./build_mt76x2u_on_pc2.sh --jobs 8
+```
+
+The modules are installed under
+`/lib/modules/$(uname -r)/updates/mt76/`; `depmod` and `modprobe mt76x2u` are
+run automatically.
+
+Show help:
+
+```bash
+sudo ./g1_pc2_usb_wifi_ap_setup.sh --help
+```
+
+Configure the USB adapter with NetworkManager:
+
+```bash
+sudo ./g1_pc2_usb_wifi_ap_setup.sh --ap-ssid "g1-pc2"
+```
+
+The script finds the Wi-Fi interface backed by USB VID:PID `0e8d:7612`, checks
+that it supports AP mode, creates a NetworkManager AP profile, and installs a
+boot-time restore service. Clients that join the AP can SSH to:
+
+```bash
+ssh unitree@10.42.0.1
+```
+
+Check status:
+
+```bash
+nmcli device status
+nmcli connection show --active
+ip route show default
+```
+
+For 5 GHz, use a legal local channel after setting the correct regulatory
+domain:
+
+```bash
+sudo iw reg set US
+sudo ./g1_pc2_usb_wifi_ap_setup.sh --ap-ssid "g1-pc2-5g" --band a --channel 36
+```
+
+NetworkManager 1.36 on the L4T 36.4.3 image does not expose a channel-width
+setting and may create this AP at only 20 MHz. For the MT7612U teleoperation
+link, use the dedicated `hostapd` setup to enforce VHT80:
+
+```bash
+sudo ./g1_pc2_usb_wifi_ap_vht80_setup.sh \
+  --ssid "G1-PC2" \
+  --password "change-this-password" \
+  --iface wlx40a5ef5c63e8 \
+  --country US \
+  --channel 149
+```
+
+This makes only the named USB interface unmanaged by NetworkManager, assigns
+it `10.42.0.1/24`, runs DHCP with `dnsmasq`, and NATs clients through PC2's
+existing default route. The built-in Wi-Fi remains managed as the uplink.
+Verify the live radio and service with:
+
+```bash
+iw dev wlx40a5ef5c63e8 info
+systemctl status g1-pc2-usb-wifi-ap-vht80.service
+ip route get 8.8.8.8
 ```
 
 ## Optional: Install Boot-Time Clock Sync

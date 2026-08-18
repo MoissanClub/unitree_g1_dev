@@ -1,0 +1,22 @@
+[Unit]
+Description=Teleimager signaling and camera-config compatibility adapter
+Requires=mediamtx.service
+After=mediamtx.service
+
+[Service]
+Type=simple
+User=teleimager-compat
+Group=mediamtx
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /usr/local/libexec/teleimager/compat-server.py
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/etc/mediamtx/tls /etc/teleimager
+
+[Install]
+WantedBy=multi-user.target

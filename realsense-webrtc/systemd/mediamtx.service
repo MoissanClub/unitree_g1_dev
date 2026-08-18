@@ -1,0 +1,23 @@
+[Unit]
+Description=MediaMTX WebRTC media router
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=mediamtx
+Group=mediamtx
+WorkingDirectory=/var/lib/mediamtx
+ExecStart=/usr/local/bin/mediamtx /etc/mediamtx/mediamtx.yml
+Restart=on-failure
+RestartSec=2
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/etc/mediamtx
+ReadWritePaths=/var/lib/mediamtx
+
+[Install]
+WantedBy=multi-user.target

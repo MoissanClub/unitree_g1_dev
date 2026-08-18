@@ -1,0 +1,61 @@
+logLevel: info
+logDestinations: [stdout]
+
+# Only local publishers can reach RTSP. The browser-facing protocol is WebRTC.
+rtsp: true
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+
+rtmp: false
+hls: false
+srt: false
+playback: false
+moq: false
+
+# WebRTC media is always DTLS-SRTP encrypted. This option additionally enables
+# HTTPS for the player and WHEP signaling endpoint.
+webrtc: true
+# The compatibility adapter owns public TCP 60001 and proxies signaling here.
+# WebRTC media still flows directly through MediaMTX on UDP 8189.
+webrtcAddress: 127.0.0.1:8889
+webrtcEncryption: true
+webrtcServerKey: /etc/mediamtx/tls/server.key
+webrtcServerCert: /etc/mediamtx/tls/server.crt
+webrtcAllowOrigins: ['*']
+
+# Direct LAN ICE is the lowest-latency route. Open UDP 8189 on the Jetson.
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ''
+webrtcIPsFromInterfaces: true
+webrtcIPsFromInterfacesList: []
+webrtcAdditionalHosts: []
+webrtcICEServers2: []
+
+# Keep management endpoints local. They are useful for health checks without
+# exposing administrative access to the robot network.
+api: true
+apiAddress: 127.0.0.1:9997
+metrics: true
+metricsAddress: 127.0.0.1:9998
+
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+        path: d435
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1']
+    permissions:
+      - action: publish
+        path: d435
+      - action: api
+      - action: metrics
+
+paths:
+  d435:
+    source: publisher
+    overridePublisher: true

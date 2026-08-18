@@ -1,0 +1,24 @@
+[Unit]
+Description=RealSense D435i hardware H.264 publisher
+Requires=mediamtx.service
+After=mediamtx.service
+
+[Service]
+Type=simple
+User=teleimager-video
+Group=video
+Environment=HOME=/var/lib/teleimager-webrtc
+EnvironmentFile=-/etc/default/teleimager-webrtc
+ExecStart=/usr/local/libexec/teleimager/publish-camera.sh
+Restart=always
+RestartSec=2
+TimeoutStopSec=8
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/teleimager-webrtc
+
+[Install]
+WantedBy=multi-user.target
