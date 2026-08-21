@@ -248,6 +248,30 @@ If you switch back to controller teleop later, rerun setup with
 `--input-mode controller`, edit `pc2_teleop.env` directly, or launch once with
 `./start_xr_teleoperate.sh --input-mode controller`.
 
+## Quest 3 Controller Session Control
+
+`teleop_hand_and_arm.py` (in `xr_teleoperate`) already lets the PC2 terminal operator drive
+session state with the keyboard: **r** = start tracking, **s** = toggle recording (with
+`--record`), **q** = quit. The same three transitions are also wired to Quest 3 controller face
+buttons, funneled through the same `on_press()` state machine so keyboard, IPC, and Quest-button
+input all stay consistent:
+
+| Action | Button |
+| :---: | :---: |
+| Start tracking (READY → active) | Right **B** |
+| Toggle recording (only with `--record`) | Left **X** |
+| Quit | Right **A** |
+
+This is default-on — no extra flag needed on `start_xr_teleoperate.sh`.
+
+**Mode caveat:** by default, `televuer` only reads controller buttons when
+`G1_TELEOP_INPUT_MODE=controller`. Since this folder's recommended flow uses
+`G1_TELEOP_INPUT_MODE=hand` (Quest hand tracking + BrainCo fingers), our `televuer` submodule is
+patched (forked at `MoissanClub/televuer`) to also report controller buttons while hand tracking
+drives arm IK, so the table above works in both modes here. If `xr_teleoperate/.gitmodules`
+ever gets repointed back at the stock `unitreerobotics/televuer` submodule, these buttons will
+silently stop working in `--input-mode hand` (they'll still work in `--input-mode controller`).
+
 ## Notes
 
 - Run these scripts on `g1-pc2`, not on your development machine.
