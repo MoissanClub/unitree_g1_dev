@@ -125,6 +125,22 @@ Override the configured XR input mode for a single launch with:
 The XR launcher prints the Quest browser URL after startup. The advertised IP
 is derived from the configured or detected Wi-Fi/default-route interface.
 
+### Recording
+
+Recording is disabled by default. Any arguments `start_xr_teleoperate.sh`
+doesn't recognize are forwarded to `teleop_hand_and_arm.py`, so its
+recording options work as passthrough flags:
+
+```bash
+./start_xr_teleoperate.sh --record
+./start_xr_teleoperate.sh --record --task-name "pick cube" --task-dir ./utils/data/
+```
+
+Other supported passthrough flags: `--task-goal`, `--task-desc`,
+`--task-steps`. Once running with `--record`, press `s` in the terminal to
+start or save a recording (toggle cycle); the startup banner reflects
+whether recording is enabled for the session.
+
 Recommended order for Quest hand tracking with BrainCo:
 
 ```bash

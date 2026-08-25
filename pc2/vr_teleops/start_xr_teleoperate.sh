@@ -17,7 +17,12 @@ Options:
   --controller              Shortcut for --input-mode controller.
   -h, --help                Show this help.
 
-Additional arguments are forwarded to teleop_hand_and_arm.py.
+Additional arguments are forwarded to teleop_hand_and_arm.py, including its
+recording options: --record, --task-dir, --task-name, --task-goal,
+--task-desc, --task-steps. Recording is disabled unless --record is passed.
+
+Example:
+  $0 --record --task-name "pick cube" --task-dir ./utils/data/
 EOF
 }
 
