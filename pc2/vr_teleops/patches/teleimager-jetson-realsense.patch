@@ -1,0 +1,136 @@
+diff --git a/src/teleimager/image_server.py b/src/teleimager/image_server.py
+index f68216f..057652d 100644
+--- a/src/teleimager/image_server.py
++++ b/src/teleimager/image_server.py
+@@ -28,6 +28,7 @@ import functools
+ import re
+ import subprocess
+ import platform
++import shutil
+ from .image_client import TripleRingBuffer, ZMQ_PublisherManager, ZMQ_Responser
+ # webrtc dependencies
+ import asyncio
+@@ -534,10 +535,19 @@ class WebRTC_PublisherManager:
+ # UVC driver reload
+ # ========================================================
+ def reload_uvc_driver():
++    sudo_path = shutil.which("sudo")
++    sudo_stat = os.stat(sudo_path) if sudo_path and os.path.exists(sudo_path) else None
++    if os.geteuid() != 0 and (
++        sudo_stat is None or sudo_stat.st_uid != 0 or not (sudo_stat.st_mode & 0o4000)
++    ):
++        logger_mp.warning("Skipping UVC driver reload because sudo is unavailable or not setuid.")
++        return
++
++    command_prefix = [] if os.geteuid() == 0 else [sudo_path]
+     try:
+-        subprocess.run("sudo modprobe -r uvcvideo", shell=True, check=True)
++        subprocess.run([*command_prefix, "modprobe", "-r", "uvcvideo"], check=True)
+         time.sleep(1)
+-        subprocess.run("sudo modprobe uvcvideo debug=0", shell=True, check=True)
++        subprocess.run([*command_prefix, "modprobe", "uvcvideo", "debug=0"], check=True)
+         time.sleep(1)
+         logger_mp.info("UVC driver reloaded successfully.")
+     except subprocess.CalledProcessError as e:
+@@ -560,7 +570,9 @@ class CameraFinder:
+         # uvc
+         reload_uvc_driver()
+         import uvc
+-        self.uvc_devices = uvc.device_list()
++        self.uvc_devices = uvc.device_list() or []
++        if not self.uvc_devices:
++            logger_mp.warning("No UVC devices found, or UVC device enumeration failed.")
+         self.uid_map = {dev["uid"]: dev for dev in self.uvc_devices}
+         # all video devices
+         self.video_paths = self._list_video_paths()
+@@ -634,7 +646,7 @@ class CameraFinder:
+             return None
+ 
+         ports = []
+-        for devnode in sorted(glob.glob("/dev/video*")):
++        for devnode in sorted(self.video_paths):
+             sysdir = f"/sys/class/video4linux/{os.path.basename(devnode)}"
+             name = _read_text(os.path.join(sysdir, "name"))
+             usb_dir = _parent_usb_device_sysdir(sysdir)
+@@ -650,15 +662,22 @@ class CameraFinder:
+         try:
+             import pyrealsense2 as rs
+             return rs
+-        except ImportError:
++        except ImportError as e:
+             arch = platform.machine()
+             system = platform.system()
+             print(f"[RealSense] Platform: {system} / {arch}")
++            if "udev" in str(e).lower():
++                msg = (
++                    "[RealSense] pyrealsense2 is installed, but RealSense SDK could not initialize udev. "
++                    "Check that the process can access /run/udev, /dev/bus/usb, and /dev/video*."
++                )
++                raise RuntimeError(f"{msg}\nOriginal import error: {e}") from e
+ 
+             if system == "Linux" and arch.startswith("aarch64"):
+                 # Jetson NX / arm64
+                 msg = (
+-                    "[RealSense] pyrealsense2 not installed. please build from source:\n"
++                    "[RealSense] pyrealsense2 is missing or incompatible with this system. "
++                    "On Jetson/aarch64, build librealsense Python bindings from source:\n"
+                     "    cd ~\n"
+                     "    git clone https://github.com/IntelRealSense/librealsense.git\n"
+                     "    cd librealsense\n"
+@@ -674,16 +693,50 @@ class CameraFinder:
+                     "[RealSense] pyrealsense2 not installed. You can try:\n"
+                     "    pip install pyrealsense2\n"
+                 )
+-            raise RuntimeError(msg)
++            raise RuntimeError(f"{msg}\nOriginal import error: {e}") from e
+ 
+     def _list_realsense_serial_numbers(self):
+-        rs = self.get_realsense_module()
+-        ctx = rs.context()
+-        devices = ctx.query_devices()
++        try:
++            rs = self.get_realsense_module()
++            ctx = rs.context()
++            devices = ctx.query_devices()
++            serials = []
++            for dev in devices:
++                try:
++                    serials.append(dev.get_info(rs.camera_info.serial_number))
++                except Exception:
++                    continue
++            return serials
++        except Exception as e:
++            logger_mp.warning("RealSense SDK discovery failed: %s", e)
++            serials = self._list_realsense_serial_numbers_from_sysfs()
++            if serials:
++                logger_mp.info("Found RealSense serial numbers from sysfs fallback: %s", serials)
++            return serials
++
++    def _list_realsense_serial_numbers_from_sysfs(self):
+         serials = []
+-        for dev in devices:
++        for usb_dir in sorted(glob.glob("/sys/bus/usb/devices/*")):
+             try:
+-                serials.append(dev.get_info(rs.camera_info.serial_number))
++                with open(os.path.join(usb_dir, "idVendor"), "r", encoding="utf-8", errors="ignore") as f:
++                    vendor_id = f.read().strip().lower()
++                if vendor_id != "8086":
++                    continue
++
++                product = ""
++                product_path = os.path.join(usb_dir, "product")
++                if os.path.exists(product_path):
++                    with open(product_path, "r", encoding="utf-8", errors="ignore") as f:
++                        product = f.read().strip()
++                if "realsense" not in product.lower():
++                    continue
++
++                serial_path = os.path.join(usb_dir, "serial")
++                if os.path.exists(serial_path):
++                    with open(serial_path, "r", encoding="utf-8", errors="ignore") as f:
++                        serial = f.read().strip()
++                    if serial:
++                        serials.append(serial)
+             except Exception:
+                 continue
+         return serials

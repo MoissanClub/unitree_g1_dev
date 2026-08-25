@@ -12,6 +12,7 @@ DEFAULT_SDK2_DIR="${HOME}/unitree_sdk2"
 DEFAULT_SDK2_PY_DIR="${HOME}/unitree_sdk2_python"
 DEFAULT_UNITREE_ROS2_DIR="${HOME}/unitree_ros2"
 DEFAULT_CONFIG_DIR="${HOME}/.config/xr_teleoperate"
+TELEIMAGER_PATCH="${SCRIPT_DIR}/patches/teleimager-jetson-realsense.patch"
 DEFAULT_DDS_IFACE=""
 DEFAULT_WIFI_IFACE=""
 DEFAULT_VIDEO_ID=""
@@ -343,6 +344,22 @@ ensure_unitree_sdk2_python() {
   run_in_conda python -m pip install -e "${SDK2_PY_DIR}"
 }
 
+apply_teleimager_patch() {
+  local teleimager_dir="${XR_REPO_DIR}/teleop/teleimager"
+
+  [[ -d "${teleimager_dir}/.git" || -f "${teleimager_dir}/.git" ]] || die "Missing teleimager Git checkout at ${teleimager_dir}."
+  [[ -f "${TELEIMAGER_PATCH}" ]] || die "Missing local teleimager patch at ${TELEIMAGER_PATCH}."
+
+  if git -C "${teleimager_dir}" apply --check "${TELEIMAGER_PATCH}"; then
+    log "Applying local Jetson/RealSense fixes to teleimager"
+    run git -C "${teleimager_dir}" apply "${TELEIMAGER_PATCH}"
+  elif git -C "${teleimager_dir}" apply --reverse --check "${TELEIMAGER_PATCH}"; then
+    log "Local Jetson/RealSense teleimager patch is already applied."
+  else
+    die "Local teleimager patch does not apply cleanly. Review ${TELEIMAGER_PATCH} against the pinned teleimager revision."
+  fi
+}
+
 ensure_xr_teleoperate() {
   ensure_repo "https://github.com/unitreerobotics/xr_teleoperate.git" "${XR_REPO_DIR}"
   if [[ -d "${XR_REPO_DIR}/.git" ]]; then
@@ -350,6 +367,8 @@ ensure_xr_teleoperate() {
     run git -C "${XR_REPO_DIR}" submodule sync --recursive
     run git -C "${XR_REPO_DIR}" submodule update --init --recursive --depth 1
   fi
+
+  apply_teleimager_patch
 
   log "Installing xr_teleoperate Python dependencies"
   run_in_conda python -m pip install -r "${XR_REPO_DIR}/requirements.txt"
