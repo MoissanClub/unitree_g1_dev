@@ -223,7 +223,25 @@ detect_realsense_serial() {
     fi
   fi
 
-  printf 'null\n'
+  local usb_dir=""
+  local vendor=""
+  local product=""
+  local detected_serial=""
+
+  for usb_dir in /sys/bus/usb/devices/*; do
+    [[ -r "${usb_dir}/idVendor" && -r "${usb_dir}/product" && -r "${usb_dir}/serial" ]] || continue
+    vendor="$(<"${usb_dir}/idVendor")"
+    [[ "${vendor,,}" == "8086" ]] || continue
+    product="$(<"${usb_dir}/product")"
+    [[ "${product,,}" == *realsense* ]] || continue
+    detected_serial="$(<"${usb_dir}/serial")"
+    if [[ -n "${detected_serial}" ]]; then
+      printf '%s\n' "${detected_serial}"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 install_apt_deps() {
@@ -420,7 +438,7 @@ configure_teleimager() {
     VIDEO_ID="$(detect_realsense_video_id)"
   fi
   if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
-    REALSENSE_SERIAL="$(detect_realsense_serial)"
+    REALSENSE_SERIAL="$(detect_realsense_serial)" || die "No RealSense serial found. Check USB/device permissions or pass --realsense-serial."
   fi
 
   log "Patching ${config_file} for PC2 head camera backend=${CAMERA_BACKEND}"
@@ -497,7 +515,7 @@ write_runtime_config() {
     VIDEO_ID="$(detect_realsense_video_id)"
   fi
   if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
-    REALSENSE_SERIAL="$(detect_realsense_serial)"
+    REALSENSE_SERIAL="$(detect_realsense_serial)" || die "No RealSense serial found. Check USB/device permissions or pass --realsense-serial."
   fi
 
   local img_server_ip=""

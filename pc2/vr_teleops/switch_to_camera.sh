@@ -18,6 +18,9 @@ This updates both:
   ~/.config/xr_teleoperate/pc2_teleop.env
   ~/xr_teleoperate/teleop/teleimager/cam_config_server.yaml
 
+The head camera is switched to the selected backend. PC2 does not stream
+the left or right wrist cameras, so their ZMQ and WebRTC outputs are disabled.
+
 Then start the stream with:
   ./start_teleimager.sh
 EOF
@@ -110,7 +113,7 @@ update_runtime_config() {
   mv "${tmp_file}" "${config_file}"
 }
 
-patch_head_camera_config() {
+patch_camera_config() {
   local path="$1"
   local backend="$2"
   local video_id="$3"
@@ -162,6 +165,10 @@ for key, value in (
 ):
     text = update_section_value(text, "head_camera", key, value)
 
+for section in ("left_wrist_camera", "right_wrist_camera"):
+    text = update_section_value(text, section, "enable_zmq", "false")
+    text = update_section_value(text, section, "enable_webrtc", "false")
+
 path.write_text(text)
 PY
 }
@@ -171,10 +178,11 @@ if [[ "${camera}" == "realsense" ]]; then
   realsense_serial="$(resolve_realsense_serial)"
 fi
 
-patch_head_camera_config "${config_path}" "${camera}" "${G1_TELEIMAGER_VIDEO_ID}" "${realsense_serial}"
+patch_camera_config "${config_path}" "${camera}" "${G1_TELEIMAGER_VIDEO_ID}" "${realsense_serial}"
 update_runtime_config "${camera}" "${realsense_serial}"
 
 teleop_log "Switched teleimager head_camera to ${camera}."
+teleop_log "Disabled ZMQ and WebRTC outputs for both wrist cameras."
 if [[ "${camera}" == "realsense" ]]; then
   teleop_log "RealSense serial: ${realsense_serial}"
 fi

@@ -213,6 +213,26 @@ After setup, launch normally:
 ./start_teleimager.sh
 ```
 
+To change the head-camera backend later without rerunning the full setup,
+stop the current teleimager process and run one of:
+
+```bash
+./switch_to_camera.sh realsense
+./switch_to_camera.sh opencv
+./switch_to_camera.sh uvc
+```
+
+With no argument, `switch_to_camera.sh` selects `realsense`. It updates both
+`~/.config/xr_teleoperate/pc2_teleop.env` and teleimager's
+`cam_config_server.yaml`. In RealSense mode it detects the camera serial number
+automatically. For every backend it configures a monocular head stream and
+disables the unused left- and right-wrist ZMQ and WebRTC streams. Start the
+stream again after switching:
+
+```bash
+./start_teleimager.sh
+```
+
 For RealSense configs, `start_teleimager.sh` automatically runs
 `teleimager-server --rs`. You can verify the stream from another browser at
 `https://PC2-WiFi-IP:60001`.
