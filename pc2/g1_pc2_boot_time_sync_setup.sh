@@ -179,28 +179,24 @@ warn() {
 }
 
 get_http_date() {
-  local url hdr
+  local hdr
 
-  # Use simple public HTTP endpoints so large clock drift does not break TLS.
-  # This is meant to keep boot-time drift bounded, not provide authenticated
-  # secure time.
-  for url in \
-    http://1.1.1.1/ \
-    http://connectivitycheck.gstatic.com/generate_204 \
-    http://neverssl.com/ \
-    http://connectivity-check.ubuntu.com/; do
-    hdr="$(
-      curl -fsSI --connect-timeout 3 --max-time 6 "$url" 2>/dev/null \
-      | tr -d '\r' \
-      | awk 'BEGIN{IGNORECASE=1} /^date:/ {sub(/^date:[[:space:]]*/, "", $0); print; exit}'
-    )"
-    if [[ -n "$hdr" ]]; then
-      printf '%s\n' "$hdr"
-      return 0
-    fi
-  done
+  # Use a regular GET and dump the response headers.  Following redirects is
+  # important because many connectivity endpoints now answer HTTP with 301.
+  # --insecure is deliberate: this helper is used when the local clock may be
+  # too wrong for TLS certificate validation.  HTTP time is only a rough,
+  # unauthenticated correction in either case.
+  hdr="$(
+    curl --silent --show-error --location --insecure \
+      --dump-header - --output /dev/null \
+      --connect-timeout 5 --max-time 15 \
+      https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null \
+    | tr -d '\r' \
+    | awk 'BEGIN{IGNORECASE=1} /^date:[[:space:]]*/ {sub(/^date:[[:space:]]*/, "", $0); value=$0} END {print value}'
+  )"
 
-  return 1
+  [[ -n "$hdr" ]] || return 1
+  printf '%s\n' "$hdr"
 }
 
 main() {
@@ -230,7 +226,7 @@ main() {
     sleep "$SYNC_RETRY_INTERVAL_SECONDS"
   done
 
-  warn "Could not obtain an HTTP Date header from any configured source within ${SYNC_WAIT_SECONDS}s."
+  warn "Could not obtain an HTTP Date header from Cloudflare within ${SYNC_WAIT_SECONDS}s."
 }
 
 main "$@"
