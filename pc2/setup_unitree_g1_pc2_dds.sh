@@ -1,19 +1,36 @@
 #!/usr/bin/env bash
 # Robust DDS / Unitree ROS 2 setup helper for a Unitree G1 EDU PC2.
-# Default target: Ubuntu 20.04 + ROS 2 Foxy + ~/unitree_ros2.
+# Supported targets: Ubuntu 20.04 + ROS 2 Foxy, or Ubuntu 22.04 + ROS 2 Humble.
 # Run as a normal user from a fresh SSH/terminal session when possible:
-#   bash setup_unitree_g1_pc2_dds.sh --iface eth0
+#   bash setup_unitree_g1_pc2_dds.sh --auto-iface
 # Revision: handles ROS setup files safely even when this script uses bash nounset.
 
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 WORKSPACE="${UNITREE_ROS2_DIR:-$HOME/unitree_ros2}"
-ROS_DISTRO_TARGET="${UNITREE_ROS_DISTRO:-foxy}"
+ROS_DISTRO_TARGET="${UNITREE_ROS_DISTRO:-}"
+OS_ID="unknown"
+OS_VERSION="unknown"
+if [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  OS_ID="${ID:-unknown}"
+  OS_VERSION="${VERSION_ID:-unknown}"
+fi
+if [[ -z "$ROS_DISTRO_TARGET" ]]; then
+  case "$OS_ID:$OS_VERSION" in
+    ubuntu:20.04) ROS_DISTRO_TARGET="foxy" ;;
+    ubuntu:22.04) ROS_DISTRO_TARGET="humble" ;;
+    *) ROS_DISTRO_TARGET="foxy" ;;
+  esac
+fi
 ROBOT_IP="${UNITREE_ROBOT_IP:-192.168.123.161}"
 IFACE="${UNITREE_DDS_IFACE:-}"
 ASSUME_YES=0
 INSTALL_DEPS=1
+INSTALL_ROS=0
+REPAIR_NVIDIA_APT=0
 ALLOW_CLONE=1
 CLEAN_BUILD=1
 PATCH_SETUP=1
@@ -34,7 +51,7 @@ Usage:
   $SCRIPT_NAME [options]
 
 Recommended for G1 EDU PC2:
-  bash $SCRIPT_NAME --iface eth0
+  bash $SCRIPT_NAME --auto-iface
 
 Options:
   --iface IFACE             Network interface used by DDS/robot traffic, e.g. eth0.
@@ -42,10 +59,12 @@ Options:
   --robot-ip IP             Robot/controller IP used only for route-based interface detection.
                              Default: $ROBOT_IP
   --workspace DIR           unitree_ros2 checkout. Default: $WORKSPACE
-  --ros-distro DISTRO       ROS 2 distro. Default: $ROS_DISTRO_TARGET
+  --ros-distro DISTRO       ROS 2 distro. Auto-detected default: $ROS_DISTRO_TARGET
   --ensure-ip CIDR          Temporarily add CIDR to --iface if missing, e.g. 192.168.123.99/24.
                              This does not persist across reboot and is intentionally opt-in.
   --parallel-workers N      Pass --parallel-workers N to colcon.
+  --install-ros             Install the matching ROS 2 base distribution if missing.
+  --repair-nvidia-apt       Back up and repair a malformed Jetson L4T APT source file.
   --skip-deps               Do not apt-install/check dependency packages.
   --skip-clone              Do not clone missing repositories; fail if sources are absent.
   --no-clean                Do not remove cyclonedds_ws/build install log before building.
@@ -83,6 +102,10 @@ while [[ $# -gt 0 ]]; do
     --parallel-workers)
       [[ $# -ge 2 ]] || die "--parallel-workers requires a number"
       PARALLEL_WORKERS="$2"; shift 2 ;;
+    --install-ros)
+      INSTALL_ROS=1; shift ;;
+    --repair-nvidia-apt)
+      REPAIR_NVIDIA_APT=1; shift ;;
     --skip-deps)
       INSTALL_DEPS=0; shift ;;
     --skip-clone)
@@ -171,8 +194,8 @@ confirm() {
 
 on_error() {
   local line="$1"
-  warn "Failed near line $line. If this happened during the first CycloneDDS build, open a fresh terminal/SSH session and rerun with Conda disabled."
-  warn "If the message mentions AMENT_TRACE_SETUP_FILES, make sure you are using this patched revision; ROS setup files require nounset to be temporarily disabled while sourcing."
+  warn "Setup failed near line $line. Review the first error above this message; later warnings are often consequences of that error."
+  warn "For build failures, retry from a fresh terminal with Conda disabled. AMENT_TRACE_SETUP_FILES errors require nounset to be disabled while sourcing ROS setup files."
 }
 trap 'on_error $LINENO' ERR
 
@@ -253,8 +276,104 @@ install_dependencies() {
   run sudo_cmd apt-get install -y "${missing[@]}"
 }
 
+validate_platform() {
+  local expected=""
+  case "$OS_ID:$OS_VERSION" in
+    ubuntu:20.04) expected="foxy" ;;
+    ubuntu:22.04) expected="humble" ;;
+  esac
+
+  if [[ -n "$expected" && "$ROS_DISTRO_TARGET" != "$expected" ]]; then
+    die "Ubuntu $OS_VERSION requires ROS 2 $expected for this setup; requested: $ROS_DISTRO_TARGET"
+  fi
+
+}
+
+repair_nvidia_apt_if_requested() {
+  local source_file="/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
+  [[ -f "$source_file" ]] || return 0
+
+  # A Jetson suite such as r36.4 is invalid on ports.ubuntu.com. This exact
+  # corruption also commonly duplicates the same bad line several times.
+  if ! grep -Eq '^[[:space:]]*deb[[:space:]]+https?://ports\.ubuntu\.com/ubuntu-ports/?[[:space:]]+r[0-9]+' "$source_file"; then
+    return 0
+  fi
+
+  if [[ "$REPAIR_NVIDIA_APT" -ne 1 ]]; then
+    die "Malformed Jetson APT entries found in $source_file (Ubuntu Ports with an NVIDIA rXX.X suite). Rerun with --repair-nvidia-apt to back up and repair that file."
+  fi
+  [[ -r /etc/nv_tegra_release ]] || die "Cannot safely repair NVIDIA APT sources: /etc/nv_tegra_release is missing."
+
+  local l4t_suite=""
+  local platform=""
+  local backup=""
+  local tmp=""
+  l4t_suite="$(sed -n 's/^# R\([0-9][0-9]*\).*REVISION:[[:space:]]*\([0-9][0-9]*\)\..*/r\1.\2/p' /etc/nv_tegra_release | head -n1)"
+  [[ "$l4t_suite" =~ ^r[0-9]+\.[0-9]+$ ]] || die "Could not determine the Jetson L4T APT suite from /etc/nv_tegra_release."
+
+  if [[ -r /proc/device-tree/compatible ]] && tr '\0' '\n' < /proc/device-tree/compatible | grep -q 'tegra234'; then
+    platform="t234"
+  elif [[ "$l4t_suite" == r36.* ]]; then
+    # Jetson Linux R36 supports the Orin/T234 generation.
+    platform="t234"
+  else
+    die "Could not safely determine the NVIDIA Jetson repository platform."
+  fi
+
+  backup="${source_file}.bak.$(date +%Y%m%d_%H%M%S)"
+  tmp="$(mktemp)"
+  sed '/^[[:space:]]*deb[[:space:]]/d' "$source_file" > "$tmp"
+  printf '\ndeb https://repo.download.nvidia.com/jetson/common %s main\n' "$l4t_suite" >> "$tmp"
+  printf 'deb https://repo.download.nvidia.com/jetson/%s %s main\n' "$platform" "$l4t_suite" >> "$tmp"
+  printf 'deb https://repo.download.nvidia.com/jetson/ffmpeg %s main\n' "$l4t_suite" >> "$tmp"
+
+  log "Backing up malformed NVIDIA APT sources to $backup"
+  run sudo_cmd cp -a "$source_file" "$backup"
+  run sudo_cmd install -m 0644 "$tmp" "$source_file"
+  rm -f "$tmp"
+  log "Repaired NVIDIA APT sources for $platform $l4t_suite."
+}
+
+ensure_ros() {
+  if [[ -f "/opt/ros/${ROS_DISTRO_TARGET}/setup.bash" ]]; then
+    log "ROS 2 $ROS_DISTRO_TARGET is already installed."
+    return 0
+  fi
+
+  if [[ "$INSTALL_ROS" -ne 1 ]]; then
+    die "ROS 2 $ROS_DISTRO_TARGET is not installed. Rerun with --install-ros, or install ros-${ROS_DISTRO_TARGET}-ros-base using the official ROS instructions."
+  fi
+  [[ "$OS_ID" == "ubuntu" ]] || die "Automatic ROS installation supports Ubuntu only (detected: $OS_ID $OS_VERSION)."
+  need_cmd curl
+
+  local codename="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+  [[ -n "$codename" ]] || die "Could not determine the Ubuntu codename from /etc/os-release."
+  local release_json=""
+  local apt_source_version=""
+  local apt_source_deb=""
+
+  log "Installing the official ROS 2 APT source and ros-${ROS_DISTRO_TARGET}-ros-base."
+  repair_nvidia_apt_if_requested
+  run sudo_cmd apt-get update
+  run sudo_cmd apt-get install -y software-properties-common curl
+  run sudo_cmd add-apt-repository -y universe
+
+  release_json="$(curl -fsSL https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest)"
+  apt_source_version="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<< "$release_json" | head -n1)"
+  [[ "$apt_source_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Could not determine a valid ros-apt-source release version."
+
+  apt_source_deb="$(mktemp --suffix=.deb)"
+  curl -fL --retry 3 -o "$apt_source_deb" \
+    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${apt_source_version}/ros2-apt-source_${apt_source_version}.${codename}_all.deb"
+  run sudo_cmd dpkg -i "$apt_source_deb"
+  rm -f "$apt_source_deb"
+  run sudo_cmd apt-get update
+  run sudo_cmd apt-get install -y "ros-${ROS_DISTRO_TARGET}-ros-base"
+
+  [[ -f "/opt/ros/${ROS_DISTRO_TARGET}/setup.bash" ]] || die "ROS installation completed without creating /opt/ros/${ROS_DISTRO_TARGET}/setup.bash"
+}
+
 preflight() {
-  [[ -f "/opt/ros/${ROS_DISTRO_TARGET}/setup.bash" ]] || die "ROS setup file not found: /opt/ros/${ROS_DISTRO_TARGET}/setup.bash"
   need_cmd git
   need_cmd colcon
   need_cmd ip
@@ -306,6 +425,14 @@ clone_package_if_missing() {
 }
 
 ensure_sources() {
+  if [[ "$ROS_DISTRO_TARGET" == "humble" ]]; then
+    log "ROS 2 Humble uses its packaged CycloneDDS; skipping the Foxy-only CycloneDDS source checkout."
+    if ! package_present "unitree_go" || ! package_present "unitree_api"; then
+      die "Could not find unitree_go and unitree_api packages under $DDS_WS"
+    fi
+    return 0
+  fi
+
   clone_package_if_missing "cyclonedds" "cyclonedds" "https://github.com/eclipse-cyclonedds/cyclonedds" "releases/0.10.x"
 
   if package_present "rmw_cyclonedds_cpp"; then
@@ -402,7 +529,7 @@ choose_interface() {
     fi
   done < <(ip -o link show | awk -F': ' '{print $2}' | cut -d'@' -f1)
 
-  [[ "${#candidates[@]}" -gt 0 ]] || die "Could not auto-detect a DDS interface. Rerun with --iface eth0 or another interface from: ip -br addr"
+  [[ "${#candidates[@]}" -gt 0 ]] || die "Could not auto-detect a DDS interface. Rerun with --iface IFACE using an interface from: ip -br addr"
 
   if [[ "$ASSUME_YES" -eq 0 && "${#candidates[@]}" -gt 1 ]]; then
     printf '\nDetected possible DDS interfaces:\n' >&2
@@ -462,6 +589,10 @@ clean_workspace() {
 }
 
 build_cyclonedds_first() {
+  if [[ "$ROS_DISTRO_TARGET" == "humble" ]]; then
+    log "Skipping custom CycloneDDS build on ROS 2 Humble, as recommended by Unitree."
+    return 0
+  fi
   log "Building CycloneDDS first from the correct workspace: $DDS_WS"
   (
     cd "$DDS_WS"
@@ -470,11 +601,15 @@ build_cyclonedds_first() {
 }
 
 build_unitree_packages() {
-  log "Sourcing /opt/ros/${ROS_DISTRO_TARGET}/setup.bash, then building all packages in $DDS_WS"
+  log "Sourcing /opt/ros/${ROS_DISTRO_TARGET}/setup.bash, then building Unitree packages in $DDS_WS"
   (
     safe_source "/opt/ros/${ROS_DISTRO_TARGET}/setup.bash"
     cd "$DDS_WS"
-    colcon build "${COLCON_ARGS[@]}"
+    if [[ "$ROS_DISTRO_TARGET" == "humble" ]]; then
+      colcon build --packages-select unitree_api unitree_go "${COLCON_ARGS[@]}"
+    else
+      colcon build "${COLCON_ARGS[@]}"
+    fi
   )
 }
 
@@ -582,6 +717,8 @@ main() {
   log "ROS distro: $ROS_DISTRO_TARGET"
   log "Robot IP used for detection: $ROBOT_IP"
 
+  validate_platform
+  ensure_ros
   install_dependencies
   deactivate_conda_completely
   preflight
@@ -608,7 +745,7 @@ Generated setup file:   $SETUP_FILE
 CycloneDDS workspace:   $DDS_WS
 
 If topics are empty, rerun with the explicit PC2 robot-network interface, for example:
-  bash $SCRIPT_NAME --iface eth0 --strict-test
+  bash $SCRIPT_NAME --iface IFACE --strict-test
 DONE
 }
 

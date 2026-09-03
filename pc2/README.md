@@ -13,6 +13,45 @@ Currently included:
 - `g1_pc2_boot_time_sync_setup.sh`: install a one-shot boot-time clock sync service. Run with `sudo`.
 - `g1_pc2_apt_mirror_setup.sh`: switch Ubuntu APT sources on PC2 to reliable official Ubuntu mirrors. Run with `sudo`.
 - `brainco/setup_g1_brainco.sh`: set up the BrainCo hand software in the user's home directory. Run as the normal login user, not with `sudo`.
+- `setup_unitree_g1_pc2_dds.sh`: build and configure Unitree ROS 2 DDS as the normal login user. It auto-selects Foxy on Ubuntu 20.04 and Humble on Ubuntu 22.04.
+
+## Set Up Unitree ROS 2 DDS
+
+Install the ROS 2 distribution supported by the PC2 operating system first:
+
+- Ubuntu 20.04: ROS 2 Foxy
+- Ubuntu 22.04: ROS 2 Humble
+
+The script checks this before changing packages. Run it as the normal login user; it invokes `sudo` only for missing APT dependencies:
+
+```bash
+./setup_unitree_g1_pc2_dds.sh --install-ros --auto-iface
+```
+
+Omit `--install-ros` once ROS is installed. The flag uses the official `ros-apt-source` package and installs the matching `ros-<distro>-ros-base` package; `sudo` prompts interactively.
+
+If APT reports an invalid NVIDIA suite such as `ports.ubuntu.com ... r36.4` on a Jetson, repair the vendor source file while installing ROS:
+
+```bash
+./setup_unitree_g1_pc2_dds.sh --install-ros --repair-nvidia-apt --auto-iface
+```
+
+The repair is deliberately opt-in. It reads the installed L4T release, backs up `/etc/apt/sources.list.d/nvidia-l4t-apt-source.list`, and replaces only its active repository entries with NVIDIA's canonical `common`, platform, and `ffmpeg` repositories.
+
+On Humble, the script uses the packaged CycloneDDS and builds only the Unitree message packages. On Foxy, it builds Unitree's required CycloneDDS 0.10.x source version first.
+
+### Compatibility and Safe Fallbacks
+
+The supported operating-system and ROS combinations are Ubuntu 20.04 with ROS 2 Foxy and Ubuntu 22.04 with ROS 2 Humble. The script rejects a mismatched combination before installing packages.
+
+The NVIDIA APT repair is backward-compatible with earlier L4T releases on the same supported Jetson hardware:
+
+- If the NVIDIA source file is already valid, `--repair-nvidia-apt` makes no changes.
+- If the source file contains the known invalid `ports.ubuntu.com ... rXX.X` pattern, the script derives the repository suite from the installed `/etc/nv_tegra_release`; it does not force the version used by a newer system.
+- Before changing the source file, the script creates a timestamped backup beside it.
+- If the L4T release or Jetson platform cannot be determined confidently, the script stops without changing the file.
+
+ROS 2 Foxy is end-of-life. Existing Foxy installations remain supported by the script, but a fresh Foxy installation may fail if its upstream package repositories no longer provide every required package. ROS 2 Humble on Ubuntu 22.04 is the recommended path for current PC2 images.
 
 ## Typical Workflow
 
