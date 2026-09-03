@@ -251,6 +251,23 @@ Run it as the normal user:
 
 The installer auto-detects BrainCo's current v2 layout and the legacy v1 layout. For v2 it downloads the repository's matching ARM64 Stark SDK, builds the Unitree SDK2 helper that disables the built-in arm action service, writes the separate left/right hand parameter files, and preserves the upstream safety launch sequence. For v1 it retains the bundled SDK and combined hand-parameter format.
 
+The BrainCo Conda environment follows the ROS distribution's system Python ABI:
+Python 3.8 for Foxy and Python 3.10 for Humble. When an existing environment
+uses the wrong version (for example after upgrading PC2 from JetPack 5/Foxy to
+JetPack 6/Humble), rerunning the installer migrates it and rebuilds the
+workspaces with a clean CMake cache. The installer also includes OpenCV and
+RealSense Python bindings because the main control module imports both even
+when the configured task does not use vision.
+
+The generated robot launcher isolates the Unitree SDK2 safety helper from the
+ROS environment's `LD_LIBRARY_PATH`. This keeps SDK2's matching CycloneDDS C
+and C++ libraries together and avoids an ABI crash before the arm service is
+disabled on Humble.
+
+The installer patches both the state manager and the active IK classes to use
+the configured G1 description directory rather than upstream's fixed
+`/home/unitree/g1_description` path.
+
 The DDS setup must be complete first. Hardware values come from `g1_pc2_hardware.env`; command-line options can override them for a one-time run. Do not launch arm control until the installer completes and the physical safety checks in BrainCo's upstream documentation have been followed.
 
 Do not prepend `sudo` to the entire BrainCo script. It already calls `sudo`

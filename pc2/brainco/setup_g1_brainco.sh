@@ -25,6 +25,7 @@ UNITREE_ROS2_DIR="${G1_UNITREE_ROS2_DIR}"
 UNITREE_SDK2_DIR="${G1_UNITREE_SDK2_DIR}"
 G1_DESC_DIR="${G1_G1_DESCRIPTION_DIR}"
 CONDA_ENV="${G1_BRAINCO_CONDA_ENV}"
+CONDA_PYTHON_VERSION=""
 NET_IF="${G1_DDS_IFACE}"
 ROBOT_DOF="${G1_ROBOT_DOF}"
 BAUDRATE="460800"
@@ -51,6 +52,12 @@ log()  { printf '\033[1;32m[brainco-setup]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[brainco-setup][warn]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[brainco-setup][error]\033[0m %s\n' "$*" >&2; exit 1; }
 
+case "${G1_ROS_DISTRO}" in
+  foxy) CONDA_PYTHON_VERSION="3.8" ;;
+  humble) CONDA_PYTHON_VERSION="3.10" ;;
+  *) die "Unsupported ROS distribution for BrainCo Python environment: ${G1_ROS_DISTRO}" ;;
+esac
+
 usage() {
   cat <<EOF
 Usage: $0 [options]
@@ -58,7 +65,7 @@ Usage: $0 [options]
 Default behavior:
   * clone/update ${REPO_URL} into ~/unitree-g1-brainco-hand
   * create/update ~/g1-brainco symlink, because repo launch scripts assume it
-  * create conda env '${CONDA_ENV}' with Python 3.8 and required packages
+  * create/update conda env '${CONDA_ENV}' with Python ${CONDA_PYTHON_VERSION} for ROS ${G1_ROS_DISTRO}
   * chmod current USB serial ports so scanning works immediately
   * scan /dev/serial/by-id and /dev/ttyUSB* for BrainCo Revo2 slaves 0x7e/0x7f
   * write ros2_stark params to source and installed config paths
@@ -200,6 +207,12 @@ conda_shell_setup() {
     return 0
   fi
 
+  if [[ -f "${HOME}/miniforge3/etc/profile.d/conda.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "${HOME}/miniforge3/etc/profile.d/conda.sh"
+    return 0
+  fi
+
   if [[ -f "${HOME}/anaconda3/etc/profile.d/conda.sh" ]]; then
     # shellcheck disable=SC1091
     source "${HOME}/anaconda3/etc/profile.d/conda.sh"
@@ -214,8 +227,15 @@ ensure_conda_env() {
   conda_shell_setup || die "Conda was not found. Install Miniconda for Linux ARM64 on the G1, then rerun."
 
   if ! conda env list | awk '{print $1}' | grep -qx "$CONDA_ENV"; then
-    log "Creating conda env ${CONDA_ENV} with Python 3.8..."
-    conda create -y -n "$CONDA_ENV" python=3.8
+    log "Creating conda env ${CONDA_ENV} with Python ${CONDA_PYTHON_VERSION}..."
+    conda create -y -n "$CONDA_ENV" "python=${CONDA_PYTHON_VERSION}"
+  else
+    local installed_python
+    installed_python="$(conda run -n "$CONDA_ENV" python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    if [[ "$installed_python" != "$CONDA_PYTHON_VERSION" ]]; then
+      log "Migrating conda env ${CONDA_ENV} from Python ${installed_python} to ${CONDA_PYTHON_VERSION} for ROS ${G1_ROS_DISTRO}..."
+      conda install -y -n "$CONDA_ENV" "python=${CONDA_PYTHON_VERSION}"
+    fi
   fi
 
   log "Installing Python/conda dependencies in ${CONDA_ENV}..."
@@ -224,6 +244,7 @@ ensure_conda_env() {
   python -m pip install --upgrade pip
   python -m pip install \
     meshcat transitions rospkg colcon-common-extensions loguru matplotlib \
+    opencv-python pyrealsense2 \
     empy==3.3.2 lark-parser colorlog 'bc-stark-sdk==1.1.9'
 }
 
@@ -288,6 +309,36 @@ text = re.sub(r"arm_urdf_path\s*=\s*['\"][^'\"]*['\"]", f"arm_urdf_path = {urdf_
 path.write_text(text)
 PY
   fi
+
+  if [[ "$BRAINCO_LAYOUT" == "v2" ]]; then
+    local ik="${BASE_DIR}/brainco_ws/src/control_py/control_py/unitree_robot/robot_arm_ik.py"
+    if [[ -f "$ik" ]]; then
+      log "Patching active G1 IK model paths to ${G1_DESC_DIR}/"
+      cp -n "$ik" "${ik}.bak" || true
+      python3 - "$ik" "$G1_DESC_DIR" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+urdf_dir = pathlib.Path(sys.argv[2])
+text = path.read_text()
+replacements = {
+    "g1_29dof.urdf": "g1_29dof.urdf",
+    "g1_23dof.urdf": "g1_23dof_mode_10.urdf",
+}
+for old_name, new_name in replacements.items():
+    text = re.sub(
+        rf"(['\"])(?:/home/unitree/g1_description/|{re.escape(str(urdf_dir))}/){re.escape(old_name)}\1",
+        repr(str(urdf_dir / new_name)),
+        text,
+    )
+text = re.sub(
+    r"(['\"])/home/unitree/g1_description/\1",
+    repr(str(urdf_dir) + "/"),
+    text,
+)
+path.write_text(text)
+PY
+    fi
+  fi
 }
 
 install_brainco_sdk() {
@@ -344,6 +395,7 @@ chmod_usb_serial_now() {
     [[ -e "$p" ]] || continue
     real="$(readlink -f "$p" 2>/dev/null || true)"
     [[ -n "$real" && -e "$real" ]] || continue
+    [[ -r "$real" && -w "$real" ]] && continue
     sudo chmod 666 "$real" || true
   done
 }
@@ -360,8 +412,11 @@ import inspect
 import json
 import os
 import re
+import select
 import subprocess
 import sys
+import termios
+import time
 from pathlib import Path
 
 
@@ -445,6 +500,55 @@ async def call_with_timeout(coro, timeout):
     return await asyncio.wait_for(coro, timeout=timeout)
 
 
+def modbus_crc(data: bytes) -> int:
+    crc = 0xFFFF
+    for value in data:
+        crc ^= value
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return crc
+
+
+def raw_revo2_probe(port: str, baudrate: int, slave: int, timeout: float) -> bool:
+    """Read documented Revo2 input register 901 without the Python SDK."""
+    speed = getattr(termios, f"B{baudrate}", None)
+    if speed is None:
+        return False
+    fd = None
+    try:
+        fd = os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        attrs = termios.tcgetattr(fd)
+        attrs[0] = attrs[1] = attrs[3] = 0
+        attrs[2] = termios.CLOCAL | termios.CREAD | termios.CS8
+        attrs[4] = attrs[5] = speed
+        attrs[6][termios.VMIN] = attrs[6][termios.VTIME] = 0
+        termios.tcsetattr(fd, termios.TCSANOW, attrs)
+        termios.tcflush(fd, termios.TCIOFLUSH)
+        request = bytes((slave, 0x04, 0x03, 0x85, 0x00, 0x01))
+        request += modbus_crc(request).to_bytes(2, "little")
+        os.write(fd, request)
+        termios.tcdrain(fd)
+        response = b""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and len(response) < 7:
+            remaining = max(0.0, deadline - time.monotonic())
+            if select.select([fd], [], [], min(0.05, remaining))[0]:
+                try:
+                    response += os.read(fd, 256)
+                except BlockingIOError:
+                    pass
+        return (
+            len(response) >= 7
+            and response[0:3] == bytes((slave, 0x04, 0x02))
+            and modbus_crc(response[:5]) == int.from_bytes(response[5:7], "little")
+        )
+    except Exception:
+        return False
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
 async def probe_port(libstark, port, baudrate, slaves, timeout):
     # SDK examples use the enum libstark.Baudrate.Baud460800, but recent wheels also accept int.
     baud_arg = baudrate
@@ -485,6 +589,24 @@ async def probe_port(libstark, port, baudrate, slaves, timeout):
                 continue
     finally:
         await maybe_close(libstark, ctx)
+
+    # bc-stark-sdk 1.1.9 queries holding register 901 for get_device_info(),
+    # while Revo2 firmware exposes the documented hand type at input register
+    # 901. Fall back to the raw read so a healthy hand is not reported absent.
+    matched_slaves = {item["slave_id"] for item in results}
+    for slave in slaves:
+        slave_text = f"0x{slave:02x}"
+        if slave_text not in matched_slaves and raw_revo2_probe(port, baudrate, slave, timeout):
+            results.append(
+                {
+                    "port": port,
+                    "stable_port": stable_name(port),
+                    "slave_id": slave_text,
+                    "description": "Revo2 (raw input-register probe)",
+                    "voltage_mv": None,
+                    "ftdi_serial": serial_short(port),
+                }
+            )
 
     return {"port": port, "stable_port": stable_name(port), "matches": results}
 
@@ -716,10 +838,13 @@ for filename in (robot_path, trans_path):
     text = text.replace("~/unitree_ros2", unitree_ros2)
     text = text.replace("~/unitree_sdk2", unitree_sdk2)
     if filename == robot_path:
-        # Preserve the v2 safety command while selecting the configured robot interface.
+        # Keep the SDK2 helper on its bundled CycloneDDS ABI. ROS Humble's
+        # LD_LIBRARY_PATH otherwise mixes its libddsc with SDK2's libddscxx.
+        sdk2_lib = pathlib.Path(unitree_sdk2) / "thirdparty/lib/aarch64"
         text = re.sub(
-            r"(turn_off_arm_action_service)[ \t]+[^ \t\r\n]+",
-            rf"\1 {shlex.quote(iface)}",
+            r"(?m)^(?:LD_LIBRARY_PATH=.*[ \t]+)?\./turn_off_arm_action_service[^\r\n]*$",
+            f"LD_LIBRARY_PATH={shlex.quote(str(sdk2_lib))} "
+            f"./turn_off_arm_action_service {shlex.quote(iface)}",
             text,
         )
         text = re.sub(
@@ -732,9 +857,45 @@ for filename in (robot_path, trans_path):
             f"sudo chmod 660 {shlex.quote(right)}",
             text,
         )
+        for port in (left, right):
+            quoted_port = shlex.quote(port)
+            chmod_command = f"sudo chmod 660 {quoted_port}"
+            text = re.sub(
+                rf"(?m)^{re.escape(chmod_command)}$",
+                f"[[ -r {quoted_port} && -w {quoted_port} ]] || {chmod_command}",
+                text,
+            )
     path.write_text(text)
 PY
   chmod +x "$robot_launch" "$trans_launch"
+}
+
+patch_smach_python_environment() {
+  [[ "$BRAINCO_LAYOUT" == "v2" ]] || return 0
+  log "Isolating the SMACH Python node's Conda runtime libraries..."
+  local source_launch="${BASE_DIR}/brainco_ws/src/control_py/launch/smach_launch.py"
+  local installed_launch="${BASE_DIR}/brainco_ws/install/control_py/share/control_py/launch/smach_launch.py"
+  python3 - "$source_launch" "$installed_launch" <<'PY'
+import pathlib, sys
+
+for filename in sys.argv[1:]:
+    path = pathlib.Path(filename)
+    if not path.is_file():
+        continue
+    text = path.read_text()
+    if "# brainco-conda-runtime" in text:
+        continue
+    needle = "\t\t\tname='smach_main_node',"
+    replacement = """\t\t\tname='smach_main_node',
+\t\t\t# brainco-conda-runtime: keep Conda's OpenSSL ahead of ROS/system libraries.
+\t\t\tadditional_env={
+\t\t\t\t'LD_LIBRARY_PATH': os.path.join(os.environ['CONDA_PREFIX'], 'lib')
+\t\t\t\t+ (':' + os.environ['LD_LIBRARY_PATH'] if os.environ.get('LD_LIBRARY_PATH') else '')
+\t\t\t},"""
+    if needle not in text:
+        raise SystemExit(f"Could not find smach_main_node launch stanza in {path}")
+    path.write_text(text.replace(needle, replacement, 1))
+PY
 }
 
 install_permanent_rule() {
@@ -788,11 +949,11 @@ build_workspaces() {
 
   (
     cd "${BASE_DIR}/brainco_ws"
-    python -m colcon build
+    python -m colcon build --cmake-clean-cache
   )
   (
     cd "${BASE_DIR}/ros2_stark_ws"
-    python -m colcon build
+    python -m colcon build --cmake-clean-cache
   )
 
   local installed=""
@@ -843,6 +1004,55 @@ EOF
   chmod +x "${BASE_DIR}/run_brainco_robot.sh" "${BASE_DIR}/run_brainco_trans.sh"
 }
 
+verify_installation() {
+  [[ "$SKIP_BUILD" == "1" || "$SKIP_CONDA" == "1" ]] && {
+    warn "Skipping post-install runtime verification because build or Conda setup was skipped."
+    return 0
+  }
+
+  log "Verifying Python ABI, runtime imports, URDF paths, and launcher isolation..."
+  conda_shell_setup || die "Conda is unavailable during post-install verification."
+  conda activate "$CONDA_ENV"
+  local installed_python
+  installed_python="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+  [[ "$installed_python" == "$CONDA_PYTHON_VERSION" ]] || \
+    die "Conda Python ${installed_python} does not match ROS ${G1_ROS_DISTRO} requirement ${CONDA_PYTHON_VERSION}."
+
+  local required_urdf="${G1_DESC_DIR}/g1_29dof.urdf"
+  [[ "$ROBOT_DOF" == "23" ]] && required_urdf="${G1_DESC_DIR}/g1_23dof_mode_10.urdf"
+  [[ -f "$required_urdf" ]] || die "Required G1 URDF is missing: ${required_urdf}"
+  if [[ "$BRAINCO_LAYOUT" == "v2" ]]; then
+    [[ -x "${UNITREE_SDK2_DIR}/build/bin/turn_off_arm_action_service" ]] || \
+      die "Unitree arm-service safety helper is missing."
+    grep -q 'LD_LIBRARY_PATH=.*/thirdparty/lib/aarch64.*turn_off_arm_action_service' \
+      "${BASE_DIR}/brainco_ws/launch/launch_robot.sh" || \
+      die "Robot launcher does not isolate the Unitree SDK2 CycloneDDS libraries."
+    grep -q '# brainco-conda-runtime' \
+      "${BASE_DIR}/brainco_ws/install/control_py/share/control_py/launch/smach_launch.py" || \
+      die "Installed SMACH launcher does not isolate Conda runtime libraries."
+  fi
+
+  (
+    set +u
+    # shellcheck disable=SC1090
+    source "${UNITREE_ROS2_DIR}/setup.sh"
+    # shellcheck disable=SC1091
+    source "${BASE_DIR}/brainco_ws/install/setup.bash"
+    # shellcheck disable=SC1091
+    source "${BASE_DIR}/ros2_stark_ws/install/setup.bash"
+    cd "${BASE_DIR}/brainco_ws"
+    if [[ "$BRAINCO_LAYOUT" == "v2" ]]; then
+      LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+        python -c 'import cv2, pyrealsense2, rclpy, pinocchio; from ros2_stark_msgs.msg import MotorStatus; MotorStatus.__class__.__import_type_support__(); import control_py.state_manager.simple'
+    else
+      LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+        python -c 'import cv2, pyrealsense2, rclpy, pinocchio'
+    fi
+  ) || die "BrainCo Python/ROS runtime import verification failed."
+
+  log "Post-install runtime verification passed."
+}
+
 main() {
   install_apt_deps
   ensure_unitree_ros2
@@ -856,9 +1066,11 @@ main() {
   run_port_scan
   configure_hand_params
   install_permanent_rule
+  patch_smach_python_environment
   build_workspaces
   patch_launch_scripts
   write_run_wrappers
+  verify_installation
 
   cat <<EOF
 
