@@ -1,5 +1,7 @@
 # PC2 XR Teleop Scripts
 
+Before setup, verify `../g1_pc2_hardware.env` as described in `../README.md`. XR setup reads its DDS interface, Wi-Fi interface, and head-camera defaults from that central hardware profile.
+
 This directory contains the PC2-side setup and runtime launch helpers for the
 Unitree XR teleoperation workflow.
 
@@ -83,7 +85,7 @@ interface or the Wi-Fi/default-route interface advertised to the Quest, pass
 them explicitly:
 
 ```bash
-./setup_pc2_xr_teleop.sh --dds-iface eth0 --wifi-iface wlan0
+./setup_pc2_xr_teleop.sh --dds-iface enP8p1s0 --wifi-iface wlx94ba06f341b5
 ```
 
 Other useful options:

@@ -9,7 +9,7 @@
 #   ~/bin/g1_lidar_rviz.sh
 #
 # Optional overrides:
-#   G1_IFACE=eth0 ./g1_lidar_one_time_setup_pc2.sh
+#   G1_IFACE=enP8p1s0 ./g1_lidar_one_time_setup_pc2.sh
 #   UNITREE_ROS2_DIR=$HOME/unitree_ros2 ./g1_lidar_one_time_setup_pc2.sh
 #   G1_LIDAR_TOPIC=/utlidar/cloud ./g1_lidar_one_time_setup_pc2.sh
 #   G1_LIDAR_FRAME=livox_frame ./g1_lidar_one_time_setup_pc2.sh
@@ -17,11 +17,13 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../pc2/load_g1_pc2_hardware.sh"
 REPO_LAUNCHER="$SCRIPT_DIR/g1_lidar_rviz.sh"
-UNITREE_ROS2_DIR="${UNITREE_ROS2_DIR:-$HOME/unitree_ros2}"
-ROS_DISTRO_NAME="${ROS_DISTRO_NAME:-foxy}"
-LIDAR_TOPIC="${G1_LIDAR_TOPIC:-/utlidar/cloud_livox_mid360}"
-LIDAR_FRAME="${G1_LIDAR_FRAME:-livox_frame}"
+UNITREE_ROS2_DIR="${UNITREE_ROS2_DIR:-${G1_UNITREE_ROS2_DIR}}"
+ROS_DISTRO_NAME="${ROS_DISTRO_NAME:-${G1_ROS_DISTRO}}"
+LIDAR_TOPIC="${G1_LIDAR_TOPIC}"
+LIDAR_FRAME="${G1_LIDAR_FRAME}"
 MAP_FRAME="${G1_MAP_FRAME:-map}"
 ENV_FILE="$HOME/.g1_lidar_env.sh"
 BIN_DIR="$HOME/bin"
@@ -241,13 +243,13 @@ main() {
   ensure_unitree_ros2_present
   maybe_build_unitree_ws
 
-  local iface="${G1_IFACE:-}"
+  local iface="${G1_IFACE:-${G1_DDS_IFACE}}"
   if [[ -z "$iface" ]]; then
     iface="$(detect_iface || true)"
   fi
 
   if [[ -z "$iface" ]]; then
-    die "Could not detect robot network interface. Re-run with G1_IFACE=<interface>, e.g. G1_IFACE=eth0 $0"
+    die "Could not detect robot network interface. Set G1_DDS_IFACE in the central hardware profile or use G1_IFACE=<interface>."
   fi
 
   info "Using network interface: $iface"

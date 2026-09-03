@@ -2,6 +2,9 @@
 
 set -Eeuo pipefail
 
+TELEOP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${TELEOP_SCRIPT_DIR}/../load_g1_pc2_hardware.sh"
 TELEOP_CONFIG_FILE="${HOME}/.config/xr_teleoperate/pc2_teleop.env"
 
 teleop_log() {
@@ -30,7 +33,7 @@ teleop_detect_dds_iface() {
     return 0
   fi
 
-  local robot_ip="${UNITREE_ROBOT_IP:-192.168.123.161}"
+  local robot_ip="${UNITREE_ROBOT_IP:-${G1_ROBOT_IP}}"
   local iface=""
   iface="$(ip route get "${robot_ip}" 2>/dev/null | awk '/dev/ {for (i = 1; i <= NF; ++i) if ($i == "dev") {print $(i + 1); exit}}')"
   if [[ -n "${iface}" ]]; then
@@ -138,11 +141,12 @@ teleop_export_common_env() {
   export G1_TELEOP_INPUT_MODE="${G1_TELEOP_INPUT_MODE:-controller}"
   export G1_TELEOP_EE="${G1_TELEOP_EE:-brainco}"
   export G1_TELEOP_DISPLAY_MODE="${G1_TELEOP_DISPLAY_MODE:-ego}"
-  export G1_TELEIMAGER_VIDEO_ID="${G1_TELEIMAGER_VIDEO_ID:-2}"
-  export G1_TELEIMAGER_CAMERA_BACKEND="${G1_TELEIMAGER_CAMERA_BACKEND:-opencv}"
-  export G1_TELEIMAGER_REALSENSE_SERIAL="${G1_TELEIMAGER_REALSENSE_SERIAL:-}"
-  export G1_TELEOP_DDS_IFACE="${G1_TELEOP_DDS_IFACE:-$(teleop_detect_dds_iface)}"
-  export G1_TELEOP_WIFI_IFACE="${G1_TELEOP_WIFI_IFACE:-$(teleop_detect_wifi_iface)}"
+  export G1_TELEIMAGER_VIDEO_ID="${G1_TELEIMAGER_VIDEO_ID:-${G1_HEAD_CAMERA_VIDEO_ID}}"
+  export G1_TELEIMAGER_CAMERA_BACKEND="${G1_TELEIMAGER_CAMERA_BACKEND:-${G1_HEAD_CAMERA_BACKEND}}"
+  export G1_TELEIMAGER_REALSENSE_SERIAL="${G1_TELEIMAGER_REALSENSE_SERIAL:-${G1_HEAD_CAMERA_REALSENSE_SERIAL}}"
+  export G1_TELEIMAGER_PHYSICAL_PATH="${G1_TELEIMAGER_PHYSICAL_PATH:-${G1_HEAD_CAMERA_PHYSICAL_PATH}}"
+  export G1_TELEOP_DDS_IFACE="${G1_TELEOP_DDS_IFACE:-${G1_DDS_IFACE:-$(teleop_detect_dds_iface)}}"
+  export G1_TELEOP_WIFI_IFACE="${G1_TELEOP_WIFI_IFACE:-${G1_WIFI_IFACE:-$(teleop_detect_wifi_iface)}}"
   export G1_TELEOP_IMG_SERVER_IP="${G1_TELEOP_IMG_SERVER_IP:-$(teleop_detect_img_server_ip)}"
   export G1_TELEOP_UNITREE_SETUP="${G1_TELEOP_UNITREE_SETUP:-${HOME}/unitree_ros2/setup.sh}"
   export G1_TELEOP_CYCLONEDDS_HOME="${G1_TELEOP_CYCLONEDDS_HOME:-${HOME}/unitree_ros2/cyclonedds_ws/install/cyclonedds}"

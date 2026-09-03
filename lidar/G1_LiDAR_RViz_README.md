@@ -1,5 +1,7 @@
 # Unitree G1 EDU LiDAR RViz Setup Scripts
 
+Before running the one-time setup, populate `../pc2/g1_pc2_hardware.env`. The LiDAR installer reads the ROS distribution, robot interface, topic, and frame from that central profile.
+
 This folder contains two helper scripts for viewing the Unitree G1 EDU head LiDAR point cloud in RViz from PC2.
 
 The expected LiDAR topic is:
@@ -46,14 +48,14 @@ After the first setup, you usually run the installed launcher:
 
 ---
 
-## 1. Copy scripts to PC2
+## 1. Copy or clone the repository to PC2
 
-From your local Ubuntu desktop, copy the scripts to PC2.
+The LiDAR installer loads the shared profile from `../pc2`, so keep the repository layout intact. From your local Ubuntu desktop, copy the repository directory to PC2, or clone it there.
 
 Example:
 
 ```bash
-scp g1_lidar_one_time_setup_pc2.sh g1_lidar_rviz.sh dwei@192.168.1.201:~
+scp -r unitree_g1_dev dwei@192.168.1.201:~
 ```
 
 Then SSH into PC2 with X11 forwarding:
@@ -69,8 +71,7 @@ ssh -Y dwei@192.168.1.201
 On PC2:
 
 ```bash
-cd ~
-chmod +x g1_lidar_one_time_setup_pc2.sh
+cd ~/unitree_g1_dev/lidar
 ./g1_lidar_one_time_setup_pc2.sh
 ```
 
@@ -111,7 +112,7 @@ The script tries to detect the robot network interface automatically.
 If the G1 Ethernet interface is known, pass it explicitly:
 
 ```bash
-G1_IFACE=eth0 ./g1_lidar_one_time_setup_pc2.sh
+G1_IFACE=enP8p1s0 ./g1_lidar_one_time_setup_pc2.sh
 ```
 
 or:

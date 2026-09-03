@@ -7,6 +7,9 @@
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/load_g1_pc2_hardware.sh"
 SOURCES_LIST="/etc/apt/sources.list"
 SOURCES_DIR="/etc/apt/sources.list.d"
 BACKUP_ROOT="/etc/apt/backup-g1-pc2-mirror-switch"

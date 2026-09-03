@@ -12,6 +12,9 @@
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/load_g1_pc2_hardware.sh"
 HELPER_PATH="/usr/local/sbin/g1-pc2-sync-clock-once.sh"
 TRIGGER_PATH="/usr/local/sbin/g1-pc2-sync-clock-trigger.sh"
 SERVICE_PATH="/etc/systemd/system/g1-pc2-sync-clock.service"

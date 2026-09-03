@@ -15,6 +15,9 @@
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/load_g1_pc2_hardware.sh"
 DEFAULT_DNS="1.1.1.1,8.8.8.8"
 
 SSID=""
@@ -25,7 +28,7 @@ STATIC_IP=""
 GATEWAY=""
 DNS="$DEFAULT_DNS"
 DNS_EXPLICIT=0
-IFACE=""
+IFACE="${G1_WIFI_IFACE}"
 CONN_NAME="g1-pc2-wifi"
 FIX_RESOLV=0
 INSTALL_BOOT_SERVICE=1

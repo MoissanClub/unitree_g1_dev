@@ -3,6 +3,21 @@
 This folder contains helper scripts intended to be copied to the Unitree G1
 `pc2` machine and run there during initial setup.
 
+## Required First Step: Populate the Hardware Profile
+
+Before running any installer, open `g1_pc2_hardware.env` and verify the robot Ethernet interface, Wi-Fi interface, BrainCo stable serial ports and adapter serial, head-camera identifiers, LiDAR settings, ROS distribution, and robot DOF. Set `G1_HARDWARE_CONFIGURED=1` only after those values match the physical PC2 wiring.
+
+Useful discovery commands:
+
+```bash
+ip -brief addr
+ls -l /dev/serial/by-id/
+for node in /sys/class/video4linux/video*; do echo "$node: $(cat "$node/name")"; done
+udevadm info --query=property --name=/dev/ttyUSB0
+```
+
+Every installation script loads this profile through `load_g1_pc2_hardware.sh`. To test a different profile without editing the checked-in file, set `G1_HARDWARE_CONFIG_FILE=/absolute/path/to/another.env`. Individual command-line flags still override profile values for one-off recovery or rewiring tests.
+
 These scripts are meant to be run once, or only when you are intentionally
 re-provisioning `g1-pc2`. They are not meant to be part of normal day-to-day
 operation on the robot.
@@ -38,7 +53,7 @@ If APT reports an invalid NVIDIA suite such as `ports.ubuntu.com ... r36.4` on a
 
 The repair is deliberately opt-in. It reads the installed L4T release, backs up `/etc/apt/sources.list.d/nvidia-l4t-apt-source.list`, and replaces only its active repository entries with NVIDIA's canonical `common`, platform, and `ffmpeg` repositories.
 
-On Humble, the script uses the packaged CycloneDDS and builds only the Unitree message packages. On Foxy, it builds Unitree's required CycloneDDS 0.10.x source version first.
+On Humble, the script uses the packaged CycloneDDS and builds the `unitree_api`, `unitree_go`, and G1/H-series `unitree_hg` message packages. On Foxy, it builds Unitree's required CycloneDDS 0.10.x source version first.
 
 ### Compatibility and Safe Fallbacks
 
@@ -58,7 +73,7 @@ ROS 2 Foxy is end-of-life. Existing Foxy installations remain supported by the s
 The intended one-time setup workflow is:
 
 1. Connect to PC2 from your development machine.
-2. Copy this folder from your development machine to PC2.
+2. Clone or copy the entire repository to PC2 so the shared hardware profile and loader retain their relative paths.
 3. SSH into PC2 and run the needed setup script(s) there with the correct privilege level.
 4. Leave the installed configuration in place; do not keep rerunning these scripts unless you are deliberately changing the setup.
 
@@ -233,6 +248,10 @@ Run it as the normal user:
 ```bash
 ./brainco/setup_g1_brainco.sh
 ```
+
+The installer auto-detects BrainCo's current v2 layout and the legacy v1 layout. For v2 it downloads the repository's matching ARM64 Stark SDK, builds the Unitree SDK2 helper that disables the built-in arm action service, writes the separate left/right hand parameter files, and preserves the upstream safety launch sequence. For v1 it retains the bundled SDK and combined hand-parameter format.
+
+The DDS setup must be complete first. Hardware values come from `g1_pc2_hardware.env`; command-line options can override them for a one-time run. Do not launch arm control until the installer completes and the physical safety checks in BrainCo's upstream documentation have been followed.
 
 Do not prepend `sudo` to the entire BrainCo script. It already calls `sudo`
 internally for the specific apt and udev steps that require elevation.

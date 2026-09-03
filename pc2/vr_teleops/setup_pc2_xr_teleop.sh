@@ -4,20 +4,22 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PC2_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck disable=SC1091
+source "${PC2_DIR}/load_g1_pc2_hardware.sh"
 
-DEFAULT_CONDA_ENV="tv"
-DEFAULT_XR_REPO="${HOME}/xr_teleoperate"
+DEFAULT_CONDA_ENV="${G1_XR_CONDA_ENV}"
+DEFAULT_XR_REPO="${G1_XR_REPO_DIR}"
 DEFAULT_BRAINCO_SERVICE_DIR="${HOME}/brainco_hand_service"
 DEFAULT_SDK2_DIR="${HOME}/unitree_sdk2"
 DEFAULT_SDK2_PY_DIR="${HOME}/unitree_sdk2_python"
-DEFAULT_UNITREE_ROS2_DIR="${HOME}/unitree_ros2"
+DEFAULT_UNITREE_ROS2_DIR="${G1_UNITREE_ROS2_DIR}"
 DEFAULT_CONFIG_DIR="${HOME}/.config/xr_teleoperate"
 TELEIMAGER_PATCH="${SCRIPT_DIR}/patches/teleimager-jetson-realsense.patch"
-DEFAULT_DDS_IFACE=""
-DEFAULT_WIFI_IFACE=""
-DEFAULT_VIDEO_ID=""
-DEFAULT_CAMERA_BACKEND="opencv"
-DEFAULT_REALSENSE_SERIAL=""
+DEFAULT_DDS_IFACE="${G1_DDS_IFACE}"
+DEFAULT_WIFI_IFACE="${G1_WIFI_IFACE}"
+DEFAULT_VIDEO_ID="${G1_HEAD_CAMERA_VIDEO_ID}"
+DEFAULT_CAMERA_BACKEND="${G1_HEAD_CAMERA_BACKEND}"
+DEFAULT_REALSENSE_SERIAL="${G1_HEAD_CAMERA_REALSENSE_SERIAL}"
 DEFAULT_ARM="G1_29"
 DEFAULT_INPUT_MODE="controller"
 DEFAULT_EE="brainco"
@@ -320,7 +322,7 @@ setup_dds() {
   if [[ -z "${DDS_IFACE}" ]]; then
     DDS_IFACE="$(detect_iface_for_ip 192.168.123.161)"
   fi
-  [[ -n "${DDS_IFACE}" ]] || DDS_IFACE="eth0"
+  [[ -n "${DDS_IFACE}" ]] || die "DDS interface is empty; populate G1_DDS_IFACE in ${G1_HARDWARE_CONFIG_FILE}."
 
   log "Reusing local DDS installer for interface ${DDS_IFACE}"
   run bash "${PC2_DIR}/setup_unitree_g1_pc2_dds.sh" --iface "${DDS_IFACE}" --yes
@@ -523,7 +525,7 @@ write_runtime_config() {
   if [[ -z "${DDS_IFACE}" ]]; then
     DDS_IFACE="$(detect_iface_for_ip 192.168.123.161)"
   fi
-  [[ -n "${DDS_IFACE}" ]] || DDS_IFACE="eth0"
+  [[ -n "${DDS_IFACE}" ]] || die "DDS interface is empty; populate G1_DDS_IFACE in ${G1_HARDWARE_CONFIG_FILE}."
 
   if [[ -z "${WIFI_IFACE}" ]]; then
     WIFI_IFACE="$(default_route_iface)"

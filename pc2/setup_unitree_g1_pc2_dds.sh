@@ -8,8 +8,11 @@
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-WORKSPACE="${UNITREE_ROS2_DIR:-$HOME/unitree_ros2}"
-ROS_DISTRO_TARGET="${UNITREE_ROS_DISTRO:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/load_g1_pc2_hardware.sh"
+WORKSPACE="${UNITREE_ROS2_DIR:-${G1_UNITREE_ROS2_DIR}}"
+ROS_DISTRO_TARGET="${UNITREE_ROS_DISTRO:-${G1_ROS_DISTRO:-}}"
 OS_ID="unknown"
 OS_VERSION="unknown"
 if [[ -r /etc/os-release ]]; then
@@ -25,8 +28,8 @@ if [[ -z "$ROS_DISTRO_TARGET" ]]; then
     *) ROS_DISTRO_TARGET="foxy" ;;
   esac
 fi
-ROBOT_IP="${UNITREE_ROBOT_IP:-192.168.123.161}"
-IFACE="${UNITREE_DDS_IFACE:-}"
+ROBOT_IP="${UNITREE_ROBOT_IP:-${G1_ROBOT_IP}}"
+IFACE="${UNITREE_DDS_IFACE:-${G1_DDS_IFACE}}"
 ASSUME_YES=0
 INSTALL_DEPS=1
 INSTALL_ROS=0
@@ -54,8 +57,8 @@ Recommended for G1 EDU PC2:
   bash $SCRIPT_NAME --auto-iface
 
 Options:
-  --iface IFACE             Network interface used by DDS/robot traffic, e.g. eth0.
-  --auto-iface              Auto-detect interface; this is the default if --iface is omitted.
+  --iface IFACE             Override the hardware-config DDS interface.
+  --auto-iface              Ignore the hardware config and auto-detect the interface.
   --robot-ip IP             Robot/controller IP used only for route-based interface detection.
                              Default: $ROBOT_IP
   --workspace DIR           unitree_ros2 checkout. Default: $WORKSPACE
@@ -77,6 +80,8 @@ Options:
 
 Environment overrides:
   UNITREE_ROS2_DIR, UNITREE_ROS_DISTRO, UNITREE_ROBOT_IP, UNITREE_DDS_IFACE
+Hardware defaults:
+  $G1_HARDWARE_CONFIG_FILE
 USAGE
 }
 
@@ -427,8 +432,8 @@ clone_package_if_missing() {
 ensure_sources() {
   if [[ "$ROS_DISTRO_TARGET" == "humble" ]]; then
     log "ROS 2 Humble uses its packaged CycloneDDS; skipping the Foxy-only CycloneDDS source checkout."
-    if ! package_present "unitree_go" || ! package_present "unitree_api"; then
-      die "Could not find unitree_go and unitree_api packages under $DDS_WS"
+    if ! package_present "unitree_go" || ! package_present "unitree_api" || ! package_present "unitree_hg"; then
+      die "Could not find unitree_go, unitree_api, and unitree_hg packages under $DDS_WS"
     fi
     return 0
   fi
@@ -606,7 +611,7 @@ build_unitree_packages() {
     safe_source "/opt/ros/${ROS_DISTRO_TARGET}/setup.bash"
     cd "$DDS_WS"
     if [[ "$ROS_DISTRO_TARGET" == "humble" ]]; then
-      colcon build --packages-select unitree_api unitree_go "${COLCON_ARGS[@]}"
+      colcon build --packages-select unitree_api unitree_go unitree_hg "${COLCON_ARGS[@]}"
     else
       colcon build "${COLCON_ARGS[@]}"
     fi
