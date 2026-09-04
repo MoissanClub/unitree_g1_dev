@@ -1,0 +1,15 @@
+diff --git a/src/teleimager/image_server.py b/src/teleimager/image_server.py
+index 057652d..b6dabcf 100644
+--- a/src/teleimager/image_server.py
++++ b/src/teleimager/image_server.py
+@@ -615,6 +615,10 @@ class ZMQ_Responser:
+ # UVC driver reload
+ # ========================================================
+ def reload_uvc_driver():
++    if glob.glob("/dev/video*"):
++        logger_mp.info("UVC video devices already exist; skipping disruptive driver reload.")
++        return
++
+     sudo_path = shutil.which("sudo")
+     sudo_stat = os.stat(sudo_path) if sudo_path and os.path.exists(sudo_path) else None
+     if os.geteuid() != 0 and (

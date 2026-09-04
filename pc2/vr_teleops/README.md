@@ -56,6 +56,7 @@ creates a Conda environment, and writes runtime configuration under
 teleop stack by:
 
 - installing required apt packages
+- adding the normal login user to the `video` group when needed for V4L2 camera access
 - reusing Miniforge, Mambaforge, Miniconda, or Anaconda when present, and installing Miniconda if needed
 - creating or updating a Conda environment
 - cloning or updating `unitree_sdk2`
@@ -81,6 +82,13 @@ Run the installer as the normal user:
 ```bash
 ./setup_pc2_xr_teleop.sh
 ```
+
+If setup adds your account to the `video` group, it stops before continuing.
+Log out completely and reconnect, or reboot, then rerun the same setup command.
+The second run detects the active group and continues normally. This two-phase
+behavior is required because a process cannot add a supplementary group to its
+parent shell. It is especially important for SSH sessions, which do not
+normally inherit desktop `uaccess` camera permissions.
 
 If PC2 has multiple interfaces and you want to pin the robot-facing DDS
 interface or the Wi-Fi/default-route interface advertised to the Quest, pass
@@ -130,6 +138,10 @@ On Jetson/aarch64, availability of a compatible `pyrealsense2` wheel varies by
 JetPack and Python release. If installation fails, setup stops with an explicit
 message; use the default OpenCV backend or install matching librealsense Python
 bindings before selecting the native RealSense backend.
+
+The local Jetson patch also avoids unloading and reloading `uvcvideo` when
+`/dev/video*` devices already exist. Reloading an active driver can race udev
+device-node creation and make a healthy camera appear missing during startup.
 
 ## Per-Session Runtime
 

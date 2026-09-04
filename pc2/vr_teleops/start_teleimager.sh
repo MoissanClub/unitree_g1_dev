@@ -137,6 +137,13 @@ main() {
     camera_backend="realsense"
   fi
 
+  if [[ "${camera_backend}" == "opencv" ]]; then
+    local video_device="/dev/video${G1_TELEIMAGER_VIDEO_ID}"
+    [[ -e "${video_device}" ]] || teleop_die "Configured camera ${video_device} does not exist. Check USB enumeration or run teleimager-server --cf."
+    [[ -r "${video_device}" && -w "${video_device}" ]] || \
+      teleop_die "No read/write access to ${video_device}. Add $(id -un) to the video group, then log out and back in or reboot."
+  fi
+
   if [[ "${camera_backend}" == "realsense" ]]; then
     realsense_serial="$(resolve_realsense_serial)"
     export G1_TELEIMAGER_REALSENSE_SERIAL="${realsense_serial}"

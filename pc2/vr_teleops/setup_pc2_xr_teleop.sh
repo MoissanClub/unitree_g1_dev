@@ -15,6 +15,7 @@ DEFAULT_SDK2_PY_DIR="${HOME}/unitree_sdk2_python"
 DEFAULT_UNITREE_ROS2_DIR="${G1_UNITREE_ROS2_DIR}"
 DEFAULT_CONFIG_DIR="${HOME}/.config/xr_teleoperate"
 TELEIMAGER_PATCH="${SCRIPT_DIR}/patches/teleimager-jetson-realsense.patch"
+TELEIMAGER_UVC_PATCH="${SCRIPT_DIR}/patches/teleimager-uvc-reload-race.patch"
 DEFAULT_DDS_IFACE="${G1_DDS_IFACE}"
 DEFAULT_WIFI_IFACE="${G1_WIFI_IFACE}"
 DEFAULT_VIDEO_ID="${G1_HEAD_CAMERA_VIDEO_ID}"
@@ -283,6 +284,28 @@ install_apt_deps() {
     v4l-utils
 }
 
+ensure_camera_access() {
+  local login_user="${SUDO_USER:-${USER:-$(id -un)}}"
+  if ! getent group video >/dev/null 2>&1; then
+    warn "The system has no 'video' group; camera access must be configured manually."
+    return 0
+  fi
+
+  # With no username, id reports the groups active in this process. Supplying
+  # a username reads the account database, which can already contain a newly
+  # added group that the current SSH/login session has not inherited yet.
+  if id -nG | tr ' ' '\n' | grep -qx video; then
+    return 0
+  fi
+
+  if ! id -nG "${login_user}" | tr ' ' '\n' | grep -qx video; then
+    log "Adding ${login_user} to the video group for V4L2 camera access"
+    run sudo usermod -aG video "${login_user}"
+  fi
+
+  die "${login_user} is configured in the video group, but this session has not activated it. Log out completely and reconnect (or reboot), then rerun this installer."
+}
+
 ensure_miniconda() {
   if command -v conda >/dev/null 2>&1 || \
      [[ -f "${HOME}/miniforge3/etc/profile.d/conda.sh" ]] || \
@@ -426,17 +449,34 @@ ensure_unitree_sdk2_python() {
 
 apply_teleimager_patch() {
   local teleimager_dir="${XR_REPO_DIR}/teleop/teleimager"
+  local image_server="${teleimager_dir}/src/teleimager/image_server.py"
 
   [[ -d "${teleimager_dir}/.git" || -f "${teleimager_dir}/.git" ]] || die "Missing teleimager Git checkout at ${teleimager_dir}."
+  [[ -f "${image_server}" ]] || die "Missing teleimager image server at ${image_server}."
   [[ -f "${TELEIMAGER_PATCH}" ]] || die "Missing local teleimager patch at ${TELEIMAGER_PATCH}."
 
-  if git -C "${teleimager_dir}" apply --check "${TELEIMAGER_PATCH}"; then
+  if grep -q 'Skipping UVC driver reload because sudo is unavailable or not setuid' "${image_server}" && \
+     grep -q 'RealSense SDK discovery failed' "${image_server}"; then
+    log "Local Jetson/RealSense teleimager patch is already applied."
+  elif git -C "${teleimager_dir}" apply --check "${TELEIMAGER_PATCH}"; then
     log "Applying local Jetson/RealSense fixes to teleimager"
     run git -C "${teleimager_dir}" apply "${TELEIMAGER_PATCH}"
   elif git -C "${teleimager_dir}" apply --reverse --check "${TELEIMAGER_PATCH}"; then
     log "Local Jetson/RealSense teleimager patch is already applied."
   else
     die "Local teleimager patch does not apply cleanly. Review ${TELEIMAGER_PATCH} against the pinned teleimager revision."
+  fi
+
+  [[ -f "${TELEIMAGER_UVC_PATCH}" ]] || die "Missing local teleimager UVC patch at ${TELEIMAGER_UVC_PATCH}."
+  if grep -q 'UVC video devices already exist; skipping disruptive driver reload' "${image_server}"; then
+    log "Local UVC reload-race fix is already applied."
+  elif git -C "${teleimager_dir}" apply --check "${TELEIMAGER_UVC_PATCH}"; then
+    log "Applying local UVC reload-race fix to teleimager"
+    run git -C "${teleimager_dir}" apply "${TELEIMAGER_UVC_PATCH}"
+  elif git -C "${teleimager_dir}" apply --reverse --check "${TELEIMAGER_UVC_PATCH}"; then
+    log "Local UVC reload-race fix is already applied."
+  else
+    die "Local UVC reload-race patch does not apply cleanly. Review ${TELEIMAGER_UVC_PATCH} against the pinned teleimager revision."
   fi
 }
 
@@ -690,6 +730,7 @@ main() {
   need_cmd ip
 
   install_apt_deps
+  ensure_camera_access
   ensure_miniconda
   ensure_conda_env
   setup_dds
