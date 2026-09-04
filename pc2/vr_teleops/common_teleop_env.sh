@@ -98,6 +98,14 @@ teleop_source_conda() {
     conda_sh="${HOME}/miniconda3/etc/profile.d/conda.sh"
   fi
 
+  if [[ -z "${conda_sh}" && -f "${HOME}/miniforge3/etc/profile.d/conda.sh" ]]; then
+    conda_sh="${HOME}/miniforge3/etc/profile.d/conda.sh"
+  fi
+
+  if [[ -z "${conda_sh}" && -f "${HOME}/mambaforge/etc/profile.d/conda.sh" ]]; then
+    conda_sh="${HOME}/mambaforge/etc/profile.d/conda.sh"
+  fi
+
   if [[ -z "${conda_sh}" && -f "${HOME}/anaconda3/etc/profile.d/conda.sh" ]]; then
     conda_sh="${HOME}/anaconda3/etc/profile.d/conda.sh"
   fi
@@ -137,6 +145,7 @@ teleop_export_common_env() {
   export G1_TELEOP_CONDA_ENV="${G1_TELEOP_CONDA_ENV:-tv}"
   export G1_TELEOP_XR_REPO="${G1_TELEOP_XR_REPO:-${HOME}/xr_teleoperate}"
   export G1_TELEOP_BRAINCO_SERVICE_DIR="${G1_TELEOP_BRAINCO_SERVICE_DIR:-${HOME}/brainco_hand_service}"
+  export G1_TELEOP_SDK2_DIR="${G1_TELEOP_SDK2_DIR:-${G1_UNITREE_SDK2_DIR:-${HOME}/unitree_sdk2}}"
   export G1_TELEOP_ARM="${G1_TELEOP_ARM:-G1_29}"
   export G1_TELEOP_INPUT_MODE="${G1_TELEOP_INPUT_MODE:-controller}"
   export G1_TELEOP_EE="${G1_TELEOP_EE:-brainco}"

@@ -24,6 +24,18 @@ DEFAULT_ARM="G1_29"
 DEFAULT_INPUT_MODE="controller"
 DEFAULT_EE="brainco"
 
+OS_ID="unknown"
+OS_VERSION="unknown"
+if [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  OS_ID="${ID:-unknown}"
+  OS_VERSION="${VERSION_ID:-unknown}"
+fi
+SYSTEM_ARCH="$(uname -m)"
+BUILD_TAG="${OS_ID}-${OS_VERSION}-${SYSTEM_ARCH}"
+BUILD_TAG="${BUILD_TAG//[^A-Za-z0-9._-]/_}"
+
 CONDA_ENV="${DEFAULT_CONDA_ENV}"
 XR_REPO_DIR="${DEFAULT_XR_REPO}"
 BRAINCO_SERVICE_DIR="${DEFAULT_BRAINCO_SERVICE_DIR}"
@@ -42,6 +54,7 @@ EE_TYPE="${DEFAULT_EE}"
 SKIP_APT=0
 SKIP_DDS=0
 SKIP_BRAINCO_SERVICE=0
+SKIP_VERIFY=0
 RELEASE_UNITREE_CAMERA=0
 NO_PULL=0
 
@@ -82,6 +95,7 @@ Options:
   --skip-apt                Do not apt-install packages.
   --skip-dds                Do not call ../setup_unitree_g1_pc2_dds.sh.
   --skip-brainco-service    Do not clone/build brainco_hand_service.
+  --no-verify               Skip post-install import and native-linkage checks.
   --release-unitree-camera  Stop/remove Unitree video_hub_pc4 services that can hold the RealSense camera.
   --no-pull                 Do not git pull existing repositories.
   -h, --help                Show this help.
@@ -106,6 +120,7 @@ while [[ $# -gt 0 ]]; do
     --skip-apt) SKIP_APT=1; shift ;;
     --skip-dds) SKIP_DDS=1; shift ;;
     --skip-brainco-service) SKIP_BRAINCO_SERVICE=1; shift ;;
+    --no-verify) SKIP_VERIFY=1; shift ;;
     --release-unitree-camera) RELEASE_UNITREE_CAMERA=1; shift ;;
     --no-pull) NO_PULL=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -258,8 +273,10 @@ install_apt_deps() {
     cmake \
     curl \
     git \
+    libboost-program-options-dev \
     libfmt-dev \
     libspdlog-dev \
+    libyaml-cpp-dev \
     openssl \
     pkg-config \
     python3-pip \
@@ -267,7 +284,11 @@ install_apt_deps() {
 }
 
 ensure_miniconda() {
-  if command -v conda >/dev/null 2>&1 || [[ -f "${HOME}/miniconda3/etc/profile.d/conda.sh" ]]; then
+  if command -v conda >/dev/null 2>&1 || \
+     [[ -f "${HOME}/miniforge3/etc/profile.d/conda.sh" ]] || \
+     [[ -f "${HOME}/mambaforge/etc/profile.d/conda.sh" ]] || \
+     [[ -f "${HOME}/miniconda3/etc/profile.d/conda.sh" ]] || \
+     [[ -f "${HOME}/anaconda3/etc/profile.d/conda.sh" ]]; then
     return 0
   fi
 
@@ -293,6 +314,18 @@ source_conda() {
     conda_sh="${HOME}/miniconda3/etc/profile.d/conda.sh"
   fi
 
+  if [[ -z "${conda_sh}" && -f "${HOME}/miniforge3/etc/profile.d/conda.sh" ]]; then
+    conda_sh="${HOME}/miniforge3/etc/profile.d/conda.sh"
+  fi
+
+  if [[ -z "${conda_sh}" && -f "${HOME}/mambaforge/etc/profile.d/conda.sh" ]]; then
+    conda_sh="${HOME}/mambaforge/etc/profile.d/conda.sh"
+  fi
+
+  if [[ -z "${conda_sh}" && -f "${HOME}/anaconda3/etc/profile.d/conda.sh" ]]; then
+    conda_sh="${HOME}/anaconda3/etc/profile.d/conda.sh"
+  fi
+
   [[ -n "${conda_sh}" ]] || die "Conda was not found after installation."
 
   # shellcheck disable=SC1090
@@ -315,6 +348,50 @@ run_in_conda() {
   conda run --no-capture-output -n "${CONDA_ENV}" "$@"
 }
 
+resolve_cyclonedds_home() {
+  local candidate=""
+  local -a candidates=(
+    "${UNITREE_ROS2_DIR}/cyclonedds_ws/install/cyclonedds"
+    "${UNITREE_ROS2_DIR}/cyclonedds_ws/install"
+    "/opt/ros/${G1_ROS_DISTRO:-humble}"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    [[ -d "${candidate}" ]] || continue
+    if find "${candidate}" -type f -name CycloneDDSConfig.cmake -print -quit 2>/dev/null | grep -q .; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+prepare_cyclonedds_home() {
+  local source_home=""
+  source_home="$(resolve_cyclonedds_home)" || return 1
+
+  # cyclonedds-python 0.10.2 expects a standalone CMAKE_INSTALL_PREFIX
+  # containing include/, bin/, and lib/libddsc.so. Ubuntu's arm64 ROS packages
+  # put the libraries in lib/aarch64-linux-gnu, so expose a stable compatibility
+  # prefix without copying or replacing the system installation.
+  if [[ -f "${source_home}/lib/libddsc.so" && -d "${source_home}/include" && -d "${source_home}/bin" ]]; then
+    printf '%s\n' "${source_home}"
+    return 0
+  fi
+
+  local ddsc_library=""
+  ddsc_library="$(find "${source_home}/lib" -type f -o -type l 2>/dev/null | grep '/libddsc\.so$' | head -n1 || true)"
+  [[ -n "${ddsc_library}" && -d "${source_home}/include" && -d "${source_home}/bin" ]] || return 1
+
+  local compat_home="${CONFIG_DIR}/cyclonedds-${BUILD_TAG}"
+  mkdir -p "${compat_home}"
+  ln -sfn "${source_home}/include" "${compat_home}/include"
+  ln -sfn "${source_home}/bin" "${compat_home}/bin"
+  ln -sfn "$(dirname "${ddsc_library}")" "${compat_home}/lib"
+  printf '%s\n' "${compat_home}"
+}
+
 setup_dds() {
   [[ "${SKIP_DDS}" -eq 1 ]] && return 0
   [[ -f "${PC2_DIR}/setup_unitree_g1_pc2_dds.sh" ]] || die "Missing ${PC2_DIR}/setup_unitree_g1_pc2_dds.sh"
@@ -329,19 +406,20 @@ setup_dds() {
 }
 
 ensure_unitree_sdk2() {
+  local build_dir="${SDK2_DIR}/build-${BUILD_TAG}"
   ensure_repo "https://github.com/unitreerobotics/unitree_sdk2.git" "${SDK2_DIR}"
-  log "Building unitree_sdk2"
-  run cmake -S "${SDK2_DIR}" -B "${SDK2_DIR}/build" -DBUILD_EXAMPLES=OFF
-  run cmake --build "${SDK2_DIR}/build" -j"$(nproc)"
-  run sudo cmake --install "${SDK2_DIR}/build"
+  log "Building unitree_sdk2 in ${build_dir} (isolated for ${OS_ID} ${OS_VERSION}/${SYSTEM_ARCH})"
+  run cmake -S "${SDK2_DIR}" -B "${build_dir}" -DBUILD_EXAMPLES=OFF
+  run cmake --build "${build_dir}" -j"$(nproc)"
+  run sudo cmake --install "${build_dir}"
 }
 
 ensure_unitree_sdk2_python() {
   ensure_repo "https://github.com/unitreerobotics/unitree_sdk2_python.git" "${SDK2_PY_DIR}"
-  export CYCLONEDDS_HOME="${UNITREE_ROS2_DIR}/cyclonedds_ws/install/cyclonedds"
-  [[ -d "${CYCLONEDDS_HOME}" ]] || die "Missing ${CYCLONEDDS_HOME}. The DDS setup step must succeed before sdk2_python install."
+  CYCLONEDDS_HOME="$(prepare_cyclonedds_home)" || die "CycloneDDS was not found in a Python-compatible layout under the Unitree workspace or /opt/ros/${G1_ROS_DISTRO:-humble}. The DDS setup step must succeed before sdk2_python install."
+  export CYCLONEDDS_HOME
 
-  log "Installing unitree_sdk2_python into conda env '${CONDA_ENV}'"
+  log "Installing unitree_sdk2_python into conda env '${CONDA_ENV}' with CycloneDDS at ${CYCLONEDDS_HOME}"
   run_in_conda python -m pip install --upgrade pip
   run_in_conda python -m pip install -e "${SDK2_PY_DIR}"
 }
@@ -381,17 +459,52 @@ ensure_xr_teleoperate() {
 
   if [[ "${CAMERA_BACKEND}" == "realsense" ]]; then
     log "Installing pyrealsense2 for teleimager RealSense mode"
-    run_in_conda python -m pip install pyrealsense2
+    if ! run_in_conda python -m pip install pyrealsense2; then
+      die "No compatible pyrealsense2 package was installed for ${SYSTEM_ARCH}. Use --camera-backend opencv, or build librealsense Python bindings for this JetPack release."
+    fi
   fi
 }
 
 ensure_brainco_hand_service() {
   [[ "${SKIP_BRAINCO_SERVICE}" -eq 1 ]] && return 0
 
+  local build_dir="${BRAINCO_SERVICE_DIR}/build-${BUILD_TAG}"
   ensure_repo "https://github.com/unitreerobotics/brainco_hand_service.git" "${BRAINCO_SERVICE_DIR}"
-  log "Building brainco_hand_service"
-  run cmake -S "${BRAINCO_SERVICE_DIR}" -B "${BRAINCO_SERVICE_DIR}/build"
-  run cmake --build "${BRAINCO_SERVICE_DIR}/build" -j"$(nproc)"
+  log "Building brainco_hand_service in ${build_dir} (isolated for ${OS_ID} ${OS_VERSION}/${SYSTEM_ARCH})"
+  run cmake -S "${BRAINCO_SERVICE_DIR}" -B "${build_dir}"
+  run cmake --build "${build_dir}" -j"$(nproc)"
+}
+
+verify_installation() {
+  [[ "${SKIP_VERIFY}" -eq 1 ]] && return 0
+
+  local cyclonedds_home=""
+  cyclonedds_home="$(prepare_cyclonedds_home)" || die "CycloneDDS installation could not be prepared for verification."
+  log "Verifying XR Python packages in Conda env '${CONDA_ENV}'"
+  CYCLONEDDS_HOME="${cyclonedds_home}" \
+    LD_LIBRARY_PATH="${cyclonedds_home}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    run_in_conda python - <<'PY'
+import importlib
+
+for module in ("numpy", "pinocchio", "unitree_sdk2py", "teleimager", "televuer", "dex_retargeting"):
+    importlib.import_module(module)
+print("XR Python imports: OK")
+PY
+
+  if [[ "${CAMERA_BACKEND}" == "realsense" ]]; then
+    run_in_conda python -c 'import pyrealsense2; print("pyrealsense2 import: OK")'
+  fi
+
+  if [[ "${SKIP_BRAINCO_SERVICE}" -eq 0 ]]; then
+    local server_bin="${BRAINCO_SERVICE_DIR}/bin/brainco_hand_server"
+    [[ -x "${server_bin}" ]] || die "BrainCo server was not produced at ${server_bin}."
+    if command -v ldd >/dev/null 2>&1; then
+      local missing=""
+      missing="$(LD_LIBRARY_PATH="${BRAINCO_SERVICE_DIR}/lib/${SYSTEM_ARCH}:${SDK2_DIR}/thirdparty/lib/${SYSTEM_ARCH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${server_bin}" | awk '/not found/{print}')"
+      [[ -z "${missing}" ]] || die "BrainCo server has unresolved libraries: ${missing}"
+    fi
+    log "BrainCo server and native library linkage: OK"
+  fi
 }
 
 ensure_certs() {
@@ -540,6 +653,8 @@ write_runtime_config() {
   fi
 
   local img_server_ip=""
+  local cyclonedds_home=""
+  cyclonedds_home="$(prepare_cyclonedds_home)" || die "CycloneDDS installation could not be prepared while writing runtime configuration."
   img_server_ip="$(iface_ipv4 "${WIFI_IFACE}")"
   if [[ -z "${img_server_ip}" ]]; then
     warn "No IPv4 found on ${WIFI_IFACE}; xr_teleoperate launcher will try again at runtime."
@@ -559,8 +674,9 @@ export G1_TELEOP_EE="${EE_TYPE}"
 export G1_TELEOP_DISPLAY_MODE="ego"
 export G1_TELEOP_XR_REPO="${XR_REPO_DIR}"
 export G1_TELEOP_BRAINCO_SERVICE_DIR="${BRAINCO_SERVICE_DIR}"
+export G1_TELEOP_SDK2_DIR="${SDK2_DIR}"
 export G1_TELEOP_UNITREE_SETUP="${UNITREE_ROS2_DIR}/setup.sh"
-export G1_TELEOP_CYCLONEDDS_HOME="${UNITREE_ROS2_DIR}/cyclonedds_ws/install/cyclonedds"
+export G1_TELEOP_CYCLONEDDS_HOME="${cyclonedds_home}"
 EOF
 }
 
@@ -585,6 +701,7 @@ main() {
   release_unitree_camera_services
   configure_teleimager
   write_runtime_config
+  verify_installation
 
   log "Setup complete."
   log "Run ./start_brainco_hand_server.sh"

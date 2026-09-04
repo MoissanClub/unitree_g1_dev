@@ -56,15 +56,17 @@ creates a Conda environment, and writes runtime configuration under
 teleop stack by:
 
 - installing required apt packages
-- installing Miniconda if needed
+- reusing Miniforge, Mambaforge, Miniconda, or Anaconda when present, and installing Miniconda if needed
 - creating or updating a Conda environment
 - cloning or updating `unitree_sdk2`
 - cloning or updating `unitree_sdk2_python`
 - cloning or updating `xr_teleoperate`
 - optionally cloning and building `brainco_hand_service`
+- isolating native build directories by Ubuntu release and CPU architecture so JetPack upgrades do not reuse stale CMake caches
 - generating self-signed TLS certs under `~/.config/xr_teleoperate/`
 - configuring teleimager for either OpenCV `/dev/videoN` or native RealSense capture
 - writing runtime configuration to `~/.config/xr_teleoperate/pc2_teleop.env`
+- verifying required Python imports and BrainCo shared-library linkage
 
 ## One-Time Setup
 
@@ -92,6 +94,7 @@ Other useful options:
 
 ```bash
 ./setup_pc2_xr_teleop.sh --skip-apt --no-pull
+./setup_pc2_xr_teleop.sh --no-verify
 ./setup_pc2_xr_teleop.sh --skip-brainco-service
 ./setup_pc2_xr_teleop.sh --arm G1_23
 ./setup_pc2_xr_teleop.sh --input-mode hand --ee brainco
@@ -106,6 +109,27 @@ Important setup choices:
 - `--ee dex1|dex3|inspire_ftp|inspire_dfx`: select other upstream-supported end effectors.
 - `--camera-backend opencv`: use the generic UVC `/dev/videoN` path at `480x640`.
 - `--camera-backend realsense`: use teleimager's RealSense path at `720x1280`; this also installs `pyrealsense2` and makes `start_teleimager.sh` pass `--rs`.
+
+The setup supports both JetPack 5 (normally Ubuntu 20.04) and JetPack 6
+(normally Ubuntu 22.04). Conda keeps the XR Python 3.10 environment independent
+of the system Python. Native SDK and BrainCo builds use separate directories for
+each Ubuntu release and architecture, so an in-place JetPack upgrade does not
+reuse the older release's CMake cache.
+
+CycloneDDS discovery also follows the ROS distribution: Foxy installations can
+use the package-specific prefix built under `~/unitree_ros2/cyclonedds_ws`,
+while Humble installations can use the system package under `/opt/ros/humble`.
+Merged and isolated colcon install layouts are both accepted. On Ubuntu arm64,
+setup creates a compatibility prefix under `~/.config/xr_teleoperate/` whose
+symlinks expose the multiarch ROS libraries in the standalone layout required
+by the pinned CycloneDDS Python binding. Its library directory is added to the
+XR process environment so transitive ROS dependencies such as Iceoryx resolve;
+system files are not copied or changed.
+
+On Jetson/aarch64, availability of a compatible `pyrealsense2` wheel varies by
+JetPack and Python release. If installation fails, setup stops with an explicit
+message; use the default OpenCV backend or install matching librealsense Python
+bindings before selecting the native RealSense backend.
 
 ## Per-Session Runtime
 

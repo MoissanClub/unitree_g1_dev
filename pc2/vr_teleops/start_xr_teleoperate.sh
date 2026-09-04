@@ -77,6 +77,7 @@ main() {
 
   teleop_activate_env "${G1_TELEOP_CONDA_ENV}"
   export CYCLONEDDS_HOME="${G1_TELEOP_CYCLONEDDS_HOME}"
+  export LD_LIBRARY_PATH="${CYCLONEDDS_HOME}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
   teleop_source_unitree_ros2
 
   local quest_url="https://${G1_TELEOP_IMG_SERVER_IP}:8012/?ws=wss://${G1_TELEOP_IMG_SERVER_IP}:8012"

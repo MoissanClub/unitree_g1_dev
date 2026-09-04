@@ -86,7 +86,10 @@ run_until_both_hands_ready() {
     ) &
     local reader_pid=$!
 
-    stdbuf -oL -eL sudo "${server_bin}" -n "${G1_TELEOP_DDS_IFACE}" "$@" > "${fifo}" 2>&1 &
+    local native_lib_path=""
+    native_lib_path="${G1_TELEOP_BRAINCO_SERVICE_DIR}/lib/$(uname -m):${G1_TELEOP_SDK2_DIR}/thirdparty/lib/$(uname -m)"
+    stdbuf -oL -eL sudo env LD_LIBRARY_PATH="${native_lib_path}" \
+      "${server_bin}" -n "${G1_TELEOP_DDS_IFACE}" "$@" > "${fifo}" 2>&1 &
     child_pid=$!
 
     local waited=0
