@@ -518,17 +518,45 @@ ensure_brainco_hand_service() {
 verify_installation() {
   [[ "${SKIP_VERIFY}" -eq 1 ]] && return 0
 
+  local conda_prefix=""
   local cyclonedds_home=""
+  conda_prefix="$(run_in_conda python -c 'import sys; print(sys.prefix)')"
+  [[ -d "${conda_prefix}/lib" ]] || die "Unable to resolve the library directory for Conda env '${CONDA_ENV}'."
   cyclonedds_home="$(prepare_cyclonedds_home)" || die "CycloneDDS installation could not be prepared for verification."
   log "Verifying XR Python packages in Conda env '${CONDA_ENV}'"
   CYCLONEDDS_HOME="${cyclonedds_home}" \
-    LD_LIBRARY_PATH="${cyclonedds_home}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    XR_REPO_DIR="${XR_REPO_DIR}" \
+    LD_LIBRARY_PATH="${conda_prefix}/lib:${cyclonedds_home}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
     run_in_conda python - <<'PY'
 import importlib
+import os
+from pathlib import Path
 
-for module in ("numpy", "pinocchio", "unitree_sdk2py", "teleimager", "televuer", "dex_retargeting"):
-    importlib.import_module(module)
-print("XR Python imports: OK")
+# Match teleop_hand_and_arm.py's import order so native-library conflicts are
+# detected without initializing DDS or connecting to the robot.
+from unitree_sdk2py.core.channel import ChannelFactoryInitialize  # noqa: F401
+from televuer import TeleVuerWrapper  # noqa: F401
+from vuer import Vuer  # noqa: F401
+import ssl
+
+modules = {
+    name: importlib.import_module(name)
+    for name in ("numpy", "pinocchio", "teleimager", "televuer", "dex_retargeting")
+}
+teleop_dir = Path(os.environ["XR_REPO_DIR"]).expanduser().resolve() / "teleop"
+expected_roots = {
+    "televuer": teleop_dir / "televuer",
+    "teleimager": teleop_dir / "teleimager",
+    "dex_retargeting": teleop_dir / "robot_control" / "dex-retargeting",
+}
+for name, expected_root in expected_roots.items():
+    module_file = Path(modules[name].__file__).resolve()
+    if not module_file.is_relative_to(expected_root.resolve()):
+        raise RuntimeError(
+            f"{name} resolves to {module_file}, outside configured checkout {expected_root}"
+        )
+
+print(f"XR Python imports and editable sources: OK (OpenSSL: {ssl.OPENSSL_VERSION})")
 PY
 
   if [[ "${CAMERA_BACKEND}" == "realsense" ]]; then
