@@ -29,6 +29,74 @@ teleimager_config_head_type() {
   ' "${config_path}"
 }
 
+video_id_supports_rgb() {
+  local video_id="$1"
+  command -v v4l2-ctl >/dev/null 2>&1 || return 1
+  v4l2-ctl -d "/dev/video${video_id}" --list-formats-ext 2>/dev/null | \
+    grep -Eq "'(MJPG|JPEG|MPEG|YUYV|RGB[0-9]*|BGR[0-9]*)'"
+}
+
+resolve_opencv_video_id() {
+  local configured_id="$1"
+  local candidate=""
+  if video_id_supports_rgb "${configured_id}"; then
+    printf '%s\n' "${configured_id}"
+    return 0
+  fi
+
+  teleop_warn "/dev/video${configured_id} is not an RGB endpoint; detecting an RGB-capable V4L2 device."
+  for candidate in /dev/video*; do
+    [[ -e "${candidate}" ]] || continue
+    if video_id_supports_rgb "${candidate#/dev/video}"; then
+      printf '%s\n' "${candidate#/dev/video}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+patch_opencv_config() {
+  local config_path="$1"
+  local video_id="$2"
+  python3 - "${config_path}" "${video_id}" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+video_id = sys.argv[2]
+text = path.read_text()
+section = re.search(r'(^head_camera:\s*\n)(.*?)(?=^\S|\Z)', text, re.MULTILINE | re.DOTALL)
+if not section:
+    raise SystemExit(f"Missing head_camera section in {path}")
+body = section.group(2)
+for key, value in (("type", "opencv"), ("video_id", video_id), ("serial_number", "null"), ("physical_path", "null")):
+    pattern = re.compile(rf'(^[ \t]+{re.escape(key)}:\s*).*$', re.MULTILINE)
+    if pattern.search(body):
+        body = pattern.sub(rf'\g<1>{value}', body, count=1)
+    else:
+        body += f"  {key}: {value}\n"
+path.write_text(text[:section.start(2)] + body + text[section.end(2):])
+PY
+}
+
+persist_runtime_video_id() {
+  local video_id="$1"
+  [[ -f "${TELEOP_CONFIG_FILE}" ]] || return 0
+  python3 - "${TELEOP_CONFIG_FILE}" "${video_id}" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+video_id = sys.argv[2]
+text = path.read_text()
+pattern = re.compile(r'^export G1_TELEIMAGER_VIDEO_ID=.*$', re.MULTILINE)
+line = f'export G1_TELEIMAGER_VIDEO_ID="{video_id}"'
+path.write_text(pattern.sub(line, text, count=1) if pattern.search(text) else text.rstrip() + "\n" + line + "\n")
+PY
+}
+
 detect_realsense_serial_from_sysfs() {
   local usb_dir=""
   local vendor=""
@@ -138,7 +206,16 @@ main() {
   fi
 
   if [[ "${camera_backend}" == "opencv" ]]; then
-    local video_device="/dev/video${G1_TELEIMAGER_VIDEO_ID}"
+    local resolved_video_id=""
+    resolved_video_id="$(resolve_opencv_video_id "${G1_TELEIMAGER_VIDEO_ID}")" || \
+      teleop_die "No readable RGB-capable V4L2 camera was found. Check video-group access and camera enumeration."
+    if [[ "${resolved_video_id}" != "${G1_TELEIMAGER_VIDEO_ID}" ]]; then
+      teleop_log "Using detected RGB endpoint /dev/video${resolved_video_id} instead of configured /dev/video${G1_TELEIMAGER_VIDEO_ID}"
+      persist_runtime_video_id "${resolved_video_id}"
+    fi
+    export G1_TELEIMAGER_VIDEO_ID="${resolved_video_id}"
+    patch_opencv_config "${config_path}" "${resolved_video_id}"
+    local video_device="/dev/video${resolved_video_id}"
     [[ -e "${video_device}" ]] || teleop_die "Configured camera ${video_device} does not exist. Check USB enumeration or run teleimager-server --cf."
     [[ -r "${video_device}" && -w "${video_device}" ]] || \
       teleop_die "No read/write access to ${video_device}. Add $(id -un) to the video group, then log out and back in or reboot."

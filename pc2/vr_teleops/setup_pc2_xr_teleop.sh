@@ -182,9 +182,14 @@ iface_ipv4() {
 }
 
 detect_realsense_video_id() {
-  if [[ -n "${VIDEO_ID}" ]]; then
+  local candidate=""
+  if [[ -n "${VIDEO_ID}" ]] && video_id_supports_rgb "${VIDEO_ID}"; then
     printf '%s\n' "${VIDEO_ID}"
     return 0
+  fi
+
+  if [[ -n "${VIDEO_ID}" ]]; then
+    warn "/dev/video${VIDEO_ID} is not an RGB-capable endpoint; detecting the RealSense color stream."
   fi
 
   if [[ -d "${XR_REPO_DIR}/teleop/teleimager" ]]; then
@@ -192,7 +197,7 @@ detect_realsense_video_id() {
     local detected_id=""
     teleimager_output="$(run_in_conda teleimager-server --cf 2>&1 || true)"
     detected_id="$(printf '%s\n' "${teleimager_output}" | sed -n "s/.*Found RGB video devices: \['\/dev\/video\([0-9]\+\)'.*/\1/p" | head -n1)"
-    if [[ -n "${detected_id}" ]]; then
+    if [[ -n "${detected_id}" ]] && video_id_supports_rgb "${detected_id}"; then
       printf '%s\n' "${detected_id}"
       return 0
     fi
@@ -201,28 +206,30 @@ detect_realsense_video_id() {
   if compgen -G "/dev/v4l/by-id/*RealSense*index0*" >/dev/null; then
     local dev_path=""
     dev_path="$(readlink -f /dev/v4l/by-id/*RealSense*index0* 2>/dev/null | head -n1 || true)"
-    if [[ "${dev_path}" =~ /dev/video([0-9]+) ]]; then
+    if [[ "${dev_path}" =~ /dev/video([0-9]+) ]] && video_id_supports_rgb "${BASH_REMATCH[1]}"; then
       printf '%s\n' "${BASH_REMATCH[1]}"
       return 0
     fi
   fi
 
   if command -v v4l2-ctl >/dev/null 2>&1; then
-    local current_device=""
-    local line=""
-    while IFS= read -r line; do
-      if [[ "${line}" != $'\t'* ]]; then
-        current_device="${line}"
-        continue
-      fi
-      if [[ "${current_device}" == *"RealSense"* && "${line}" =~ /dev/video([0-9]+) ]]; then
-        printf '%s\n' "${BASH_REMATCH[1]}"
+    for candidate in /dev/video*; do
+      [[ -e "${candidate}" ]] || continue
+      if video_id_supports_rgb "${candidate#/dev/video}"; then
+        printf '%s\n' "${candidate#/dev/video}"
         return 0
       fi
-    done < <(v4l2-ctl --list-devices 2>/dev/null || true)
+    done
   fi
 
-  printf '2\n'
+  die "No RGB-capable V4L2 camera endpoint was found. Check camera permissions and run v4l2-ctl --list-devices."
+}
+
+video_id_supports_rgb() {
+  local video_id="$1"
+  command -v v4l2-ctl >/dev/null 2>&1 || return 1
+  v4l2-ctl -d "/dev/video${video_id}" --list-formats-ext 2>/dev/null | \
+    grep -Eq "'(MJPG|JPEG|MPEG|YUYV|RGB[0-9]*|BGR[0-9]*)'"
 }
 
 detect_realsense_serial() {
@@ -636,7 +643,7 @@ configure_teleimager() {
     return 0
   fi
 
-  if [[ "${CAMERA_BACKEND}" == "opencv" && -z "${VIDEO_ID}" ]]; then
+  if [[ "${CAMERA_BACKEND}" == "opencv" ]]; then
     VIDEO_ID="$(detect_realsense_video_id)"
   fi
   if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
@@ -713,7 +720,7 @@ write_runtime_config() {
   fi
   [[ -n "${WIFI_IFACE}" ]] || WIFI_IFACE="${DDS_IFACE}"
 
-  if [[ "${CAMERA_BACKEND}" == "opencv" && -z "${VIDEO_ID}" ]]; then
+  if [[ "${CAMERA_BACKEND}" == "opencv" ]]; then
     VIDEO_ID="$(detect_realsense_video_id)"
   fi
   if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then

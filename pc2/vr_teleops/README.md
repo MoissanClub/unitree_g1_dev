@@ -142,6 +142,10 @@ bindings before selecting the native RealSense backend.
 The local Jetson patch also avoids unloading and reloading `uvcvideo` when
 `/dev/video*` devices already exist. Reloading an active driver can race udev
 device-node creation and make a healthy camera appear missing during startup.
+For OpenCV mode, setup and the runtime launcher validate the configured V4L2
+endpoint's pixel formats and automatically select an RGB-capable endpoint. This
+prevents a RealSense depth or infrared node from being used as the color stream
+when `/dev/videoN` numbering changes.
 
 ## Per-Session Runtime
 
