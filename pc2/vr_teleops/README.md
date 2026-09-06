@@ -21,6 +21,7 @@ implementation lives in the downstream `xr_teleoperate` checkout referenced by
 - `start_brainco_hand_server.sh`: starts the BrainCo hand server
 - `start_teleimager.sh`: starts the teleimager server
 - `start_xr_teleoperate.sh`: starts the main XR teleoperation app
+- `demo.sh`: recommended launcher for BrainCo, teleimager, and XR as one supervised session
 - `common_teleop_env.sh`: shared environment and auto-detection helpers used by the launchers
 
 ## How This Folder Fits The Stack
@@ -149,7 +150,23 @@ when `/dev/videoN` numbering changes.
 
 ## Per-Session Runtime
 
-After setup completes, start the teleop services on PC2 in separate terminals:
+After setup completes, the recommended way to start a complete session is:
+
+```bash
+./demo.sh
+```
+
+The supervisor authenticates once, stops stale BrainCo, teleimager, and camera
+holder processes (while preserving Unitree's `ota_pipe`), starts BrainCo and
+waits for both hands, starts teleimager and waits for its WebRTC endpoint, and
+then starts XR. Arguments
+such as `--no-motion`, `--hand`, or `--record` are forwarded to
+`start_xr_teleoperate.sh`. Ctrl+C or XR exit stops both background services.
+Readiness timeouts can be adjusted with `G1_TELEOP_STACK_BRAINCO_TIMEOUT` and
+`G1_TELEOP_STACK_CAMERA_TIMEOUT`.
+
+For troubleshooting or independent service control, start the three processes
+in separate terminals instead:
 
 ```bash
 ./start_brainco_hand_server.sh
@@ -157,11 +174,17 @@ After setup completes, start the teleop services on PC2 in separate terminals:
 ./start_xr_teleoperate.sh
 ```
 
+The default is Quest controller input with robot motion mode enabled. Motion
+mode can move the robot; put the robot in the required Regular/control mode and
+clear its surroundings before starting teleoperation. For a non-motion test,
+run `./demo.sh --no-motion`.
+
 Override the configured XR input mode for a single launch with:
 
 ```bash
 ./start_xr_teleoperate.sh --input-mode controller
 ./start_xr_teleoperate.sh --input-mode hand
+./start_xr_teleoperate.sh --no-motion
 ```
 
 The XR launcher prints the Quest browser URL after startup. The advertised IP
@@ -183,12 +206,10 @@ Other supported passthrough flags: `--task-goal`, `--task-desc`,
 start or save a recording (toggle cycle); the startup banner reflects
 whether recording is enabled for the session.
 
-Recommended order for Quest hand tracking with BrainCo:
+To run Quest hand tracking with BrainCo through the recommended supervisor:
 
 ```bash
-./start_brainco_hand_server.sh
-./start_teleimager.sh
-./start_xr_teleoperate.sh
+./demo.sh --hand
 ```
 
 The BrainCo wrapper authenticates `sudo` once and runs its retry supervisor as
@@ -228,6 +249,7 @@ That file is written by `setup_pc2_xr_teleop.sh` and contains values such as:
 - `G1_TELEIMAGER_REALSENSE_SERIAL`
 - `G1_TELEOP_ARM`
 - `G1_TELEOP_INPUT_MODE`
+- `G1_TELEOP_MOTION_MODE`
 - `G1_TELEOP_EE`
 - `G1_TELEOP_DISPLAY_MODE`
 - `G1_TELEOP_XR_REPO`
@@ -237,6 +259,7 @@ You can edit it later if interface names, IPs, or checkout locations change.
 The most important mode controls are:
 
 - `G1_TELEOP_INPUT_MODE=controller|hand`
+- `G1_TELEOP_MOTION_MODE=motion|no-motion`
 - `G1_TELEOP_EE=dex1|dex3|inspire_ftp|inspire_dfx|brainco`
 - `G1_TELEIMAGER_CAMERA_BACKEND=opencv|realsense`
 
