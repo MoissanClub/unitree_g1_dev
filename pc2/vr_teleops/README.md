@@ -191,6 +191,17 @@ Recommended order for Quest hand tracking with BrainCo:
 ./start_xr_teleoperate.sh
 ```
 
+The BrainCo wrapper authenticates `sudo` once and runs its retry supervisor as
+root, avoiding per-attempt credentials tied to a detached terminal. It launches
+every server attempt in its own process group and waits for that entire group
+to stop before retrying. This prevents a failed attempt from retaining a serial
+port or DDS resource.
+Startup defaults to 8 seconds; retry delay defaults to 1 second. Advanced
+overrides are `G1_TELEOP_BRAINCO_STARTUP_TIMEOUT`,
+`G1_TELEOP_BRAINCO_RETRY_DELAY`, `G1_TELEOP_BRAINCO_INT_GRACE`, and
+`G1_TELEOP_BRAINCO_TERM_GRACE`. Ctrl+C stops the current group and exits rather
+than beginning another attempt.
+
 If `G1_TELEOP_INPUT_MODE=hand` and `G1_TELEOP_EE=brainco`, the launched
 teleop process uses:
 
