@@ -23,6 +23,7 @@ DEFAULT_CAMERA_BACKEND="${G1_HEAD_CAMERA_BACKEND}"
 DEFAULT_REALSENSE_SERIAL="${G1_HEAD_CAMERA_REALSENSE_SERIAL}"
 DEFAULT_ARM="G1_29"
 DEFAULT_INPUT_MODE="controller"
+DEFAULT_MOTION_MODE="motion"
 DEFAULT_EE="brainco"
 
 OS_ID="unknown"
@@ -51,6 +52,7 @@ CAMERA_BACKEND="${DEFAULT_CAMERA_BACKEND}"
 REALSENSE_SERIAL="${DEFAULT_REALSENSE_SERIAL}"
 ARM_MODEL="${DEFAULT_ARM}"
 INPUT_MODE="${DEFAULT_INPUT_MODE}"
+MOTION_MODE="${DEFAULT_MOTION_MODE}"
 EE_TYPE="${DEFAULT_EE}"
 SKIP_APT=0
 SKIP_DDS=0
@@ -87,6 +89,8 @@ Options:
   --realsense-serial SERIAL RealSense serial_number from 'teleimager-server --cf --rs'. Default: auto-detect when possible.
   --arm G1_23|G1_29         Arm model used by xr_teleoperate. Default: ${DEFAULT_ARM}
   --input-mode MODE         XR tracking mode: hand or controller. Default: ${DEFAULT_INPUT_MODE}
+  --motion                  Enable robot motion mode by default (current default).
+  --no-motion               Configure safer non-motion mode as the default.
   --ee TYPE                 End effector: dex1, dex3, inspire_ftp, inspire_dfx, brainco. Default: ${DEFAULT_EE}
   --conda-env NAME          Conda env name. Default: ${DEFAULT_CONDA_ENV}
   --xr-repo DIR             xr_teleoperate checkout path. Default: ${DEFAULT_XR_REPO}
@@ -112,6 +116,8 @@ while [[ $# -gt 0 ]]; do
     --realsense-serial) REALSENSE_SERIAL="$2"; shift 2 ;;
     --arm) ARM_MODEL="$2"; shift 2 ;;
     --input-mode) INPUT_MODE="$2"; shift 2 ;;
+    --motion) MOTION_MODE="motion"; shift ;;
+    --no-motion) MOTION_MODE="no-motion"; shift ;;
     --ee) EE_TYPE="$2"; shift 2 ;;
     --conda-env) CONDA_ENV="$2"; shift 2 ;;
     --xr-repo) XR_REPO_DIR="$2"; shift 2 ;;
@@ -745,6 +751,7 @@ export G1_TELEIMAGER_CAMERA_BACKEND="${CAMERA_BACKEND}"
 export G1_TELEIMAGER_REALSENSE_SERIAL="${REALSENSE_SERIAL}"
 export G1_TELEOP_ARM="${ARM_MODEL}"
 export G1_TELEOP_INPUT_MODE="${INPUT_MODE}"
+export G1_TELEOP_MOTION_MODE="${MOTION_MODE}"
 export G1_TELEOP_EE="${EE_TYPE}"
 export G1_TELEOP_DISPLAY_MODE="ego"
 export G1_TELEOP_XR_REPO="${XR_REPO_DIR}"

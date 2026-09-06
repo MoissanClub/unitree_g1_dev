@@ -148,6 +148,7 @@ teleop_export_common_env() {
   export G1_TELEOP_SDK2_DIR="${G1_TELEOP_SDK2_DIR:-${G1_UNITREE_SDK2_DIR:-${HOME}/unitree_sdk2}}"
   export G1_TELEOP_ARM="${G1_TELEOP_ARM:-G1_29}"
   export G1_TELEOP_INPUT_MODE="${G1_TELEOP_INPUT_MODE:-controller}"
+  export G1_TELEOP_MOTION_MODE="${G1_TELEOP_MOTION_MODE:-motion}"
   export G1_TELEOP_EE="${G1_TELEOP_EE:-brainco}"
   export G1_TELEOP_DISPLAY_MODE="${G1_TELEOP_DISPLAY_MODE:-ego}"
   export G1_TELEIMAGER_VIDEO_ID="${G1_TELEIMAGER_VIDEO_ID:-${G1_HEAD_CAMERA_VIDEO_ID}}"
@@ -163,6 +164,11 @@ teleop_export_common_env() {
   case "${G1_TELEOP_INPUT_MODE}" in
     hand|controller) ;;
     *) teleop_die "Unsupported G1_TELEOP_INPUT_MODE='${G1_TELEOP_INPUT_MODE}'. Expected 'hand' or 'controller'." ;;
+  esac
+
+  case "${G1_TELEOP_MOTION_MODE}" in
+    motion|no-motion) ;;
+    *) teleop_die "Unsupported G1_TELEOP_MOTION_MODE='${G1_TELEOP_MOTION_MODE}'. Expected 'motion' or 'no-motion'." ;;
   esac
 
   case "${G1_TELEOP_EE}" in
