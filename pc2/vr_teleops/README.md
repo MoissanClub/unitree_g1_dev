@@ -370,11 +370,17 @@ input all stay consistent:
 
 | Action | Button |
 | :---: | :---: |
-| Start tracking (READY → active) | Right **B** |
+| Start tracking (READY → active), and pause/resume (active ⇄ Ready) once running | Right **B** |
 | Toggle recording (only with `--record`) | Left **X** |
 | Quit | Right **A** |
 
 This is default-on — no extra flag needed on `start_xr_teleoperate.sh`.
+
+Right **B** is a toggle, not just a start button: the first press starts VR-driven arm
+tracking; every press after that toggles between pause (back to Ready — the arm freezes
+in place, it does not move to a fixed pose) and resume (tracking continues from wherever
+the arm currently is). Right **A** always quits outright, from either state, and parks the
+arm home on the way out.
 
 **Mode caveat:** by default, `televuer` only reads controller buttons when
 `G1_TELEOP_INPUT_MODE=controller`. Since this folder's recommended flow uses
@@ -383,6 +389,11 @@ patched (forked at `MoissanClub/televuer`) to also report controller buttons whi
 drives arm IK, so the table above works in both modes here. If `xr_teleoperate/.gitmodules`
 ever gets repointed back at the stock `unitreerobotics/televuer` submodule, these buttons will
 silently stop working in `--input-mode hand` (they'll still work in `--input-mode controller`).
+Make sure the `teleop/televuer` submodule is actually checked out at or past commit `645db10`
+("Fix controller state initialization in hand-tracking mode") — an earlier pin of the fork
+(`6af6ccd`) registers the button handler without allocating its backing state in hand mode,
+which throws on every controller event (silently swallowed) and makes these buttons dead in
+`--input-mode hand`.
 
 ## Notes
 
