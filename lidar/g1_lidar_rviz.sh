@@ -42,7 +42,7 @@ if [[ -z "${DISPLAY:-}" ]]; then
 [ERROR] DISPLAY is empty. RViz needs a GUI display.
 
 Reconnect from your local Ubuntu desktop with:
-  ssh -Y dwei@192.168.1.201
+  ssh -Y dwei@192.168.0.201
 
 Then run:
   ~/bin/g1_lidar_rviz.sh
