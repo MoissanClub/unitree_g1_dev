@@ -273,6 +273,24 @@ The DDS setup must be complete first. Hardware values come from `g1_pc2_hardware
 Do not prepend `sudo` to the entire BrainCo script. It already calls `sudo`
 internally for the specific apt and udev steps that require elevation.
 
+## Optional: Record the G1 Microphone
+
+PC2 has no sound card that hears the robot's microphone array; it is attached
+to PC1, which publishes it on the wired robot network as UDP multicast
+(`239.168.123.161:5555`, 16 kHz, 16-bit, mono PCM). `audio/record_g1_mic.py`
+joins that group and saves the stream as a WAV file. It needs no setup, `sudo`,
+or extra packages.
+
+```bash
+./audio/record_g1_mic.py                     # record until Ctrl-C
+./audio/record_g1_mic.py -d 10 -o hello.wav  # record 10 seconds
+./audio/record_g1_mic.py --help
+```
+
+The script prints a live level meter and warns if UDP packets were dropped. See
+the comments at the top of the script for how the pieces fit together. To hear
+a recording, copy it to another machine, because PC2 has no speaker output.
+
 ## Notes
 
 - Run these scripts on `g1-pc2`, not on your development machine.
