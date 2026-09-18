@@ -87,8 +87,9 @@ done
 
 PHY="$(iw dev "$IFACE" info | awk '/wiphy/ {print "phy" $2; exit}')"
 [[ -n "$PHY" ]] || die "Could not determine phy for $IFACE"
-iw phy "$PHY" info | grep -qE '^\s+\* AP$' || die "$PHY does not support AP mode"
-iw phy "$PHY" info | grep -q 'VHT Capabilities' || die "$PHY does not support 802.11ac/VHT"
+PHY_INFO="$(iw phy "$PHY" info)"
+grep -qE '^[[:space:]]+\* AP$' <<<"$PHY_INFO" || die "$PHY does not support AP mode"
+grep -q 'VHT Capabilities' <<<"$PHY_INFO" || die "$PHY does not support 802.11ac/VHT"
 
 AP_PSK="$(wpa_passphrase "$SSID" "$PASSWORD" | awk -F= '
   /^[[:space:]]*psk=/ && length($2) == 64 && $2 ~ /^[0-9a-f]+$/ { print $2; exit }
@@ -161,8 +162,11 @@ COUNTRY="$COUNTRY"
 SUBNET="10.42.0.0/24"
 HOSTAPD_CONF="$HOSTAPD_CONF"
 DNSMASQ_CONF="$DNSMASQ_CONF"
+EXPECTED_SSID="$SSID"
+MIN_BOOT_AGE=60
 HOSTAPD_PID=""
 DNSMASQ_PID=""
+MONITOR_PID=""
 
 remove_firewall_rules() {
   iptables -w 5 -t nat -D POSTROUTING -s "\$SUBNET" ! -d "\$SUBNET" -j MASQUERADE 2>/dev/null || true
@@ -171,11 +175,19 @@ remove_firewall_rules() {
 }
 
 cleanup() {
+  [[ -z "\$MONITOR_PID" ]] || kill "\$MONITOR_PID" 2>/dev/null || true
   [[ -z "\$DNSMASQ_PID" ]] || kill "\$DNSMASQ_PID" 2>/dev/null || true
   [[ -z "\$HOSTAPD_PID" ]] || kill "\$HOSTAPD_PID" 2>/dev/null || true
   remove_firewall_rules
 }
 trap cleanup EXIT INT TERM
+
+BOOT_AGE="\$(cut -d. -f1 /proc/uptime)"
+if (( BOOT_AGE < MIN_BOOT_AGE )); then
+  WAIT_SECONDS=\$((MIN_BOOT_AGE - BOOT_AGE))
+  echo "Waiting \${WAIT_SECONDS}s for boot-time USB initialization to settle"
+  sleep "\$WAIT_SECONDS"
+fi
 
 for _ in {1..30}; do
   [[ -d "/sys/class/net/\$IFACE" ]] && break
@@ -205,10 +217,39 @@ kill -0 "\$HOSTAPD_PID"
 /usr/sbin/dnsmasq --no-daemon --conf-file="\$DNSMASQ_CONF" &
 DNSMASQ_PID=\$!
 
+monitor_ap() {
+  local failures=0
+  local info
+
+  sleep 10
+  while kill -0 "\$HOSTAPD_PID" 2>/dev/null && kill -0 "\$DNSMASQ_PID" 2>/dev/null; do
+    info="\$(iw dev "\$IFACE" info 2>/dev/null || true)"
+    if [[ -d "/sys/class/net/\$IFACE" ]] &&
+       grep -qE '^[[:space:]]*type AP$' <<<"\$info" &&
+       grep -qF "ssid \$EXPECTED_SSID" <<<"\$info" &&
+       grep -qE '^[[:space:]]*channel [0-9]+' <<<"\$info" &&
+       ip -o -4 addr show dev "\$IFACE" | grep -qF '10.42.0.1/24'; then
+      failures=0
+    else
+      failures=\$((failures + 1))
+      echo "AP health check failed (\$failures/2)" >&2
+      if (( failures >= 2 )); then
+        echo "AP lost its USB interface or beacon; requesting service restart" >&2
+        return 1
+      fi
+    fi
+    sleep 5
+  done
+  return 1
+}
+monitor_ap &
+MONITOR_PID=\$!
+
 set +e
-wait -n "\$HOSTAPD_PID" "\$DNSMASQ_PID"
+wait -n "\$HOSTAPD_PID" "\$DNSMASQ_PID" "\$MONITOR_PID"
 STATUS=\$?
 set -e
+(( STATUS != 0 )) || STATUS=1
 exit "\$STATUS"
 EOF
 chmod 0755 "$RUNNER"
@@ -218,6 +259,7 @@ cat > "$SERVICE" <<EOF
 Description=Unitree G1 PC2 USB Wi-Fi VHT80 access point
 After=NetworkManager.service systemd-modules-load.service
 Wants=NetworkManager.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -229,6 +271,7 @@ KillMode=control-group
 [Install]
 WantedBy=multi-user.target
 EOF
+chmod 0644 "$SERVICE"
 
 systemctl disable --now g1-pc2-usb-wifi-ap.service >/dev/null 2>&1 || true
 systemctl disable --now hostapd.service >/dev/null 2>&1 || true
@@ -237,7 +280,8 @@ nmcli connection modify "$OLD_CONNECTION" connection.autoconnect no >/dev/null 2
 nmcli device set "$IFACE" managed no || true
 
 systemctl daemon-reload
-systemctl enable --now g1-pc2-usb-wifi-ap-vht80.service
+systemctl enable g1-pc2-usb-wifi-ap-vht80.service
+systemctl restart g1-pc2-usb-wifi-ap-vht80.service
 
 log "VHT80 AP '$SSID' started on $IFACE, channel $CHANNEL, address 10.42.0.1"
 iw dev "$IFACE" info
