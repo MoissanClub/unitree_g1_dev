@@ -22,9 +22,12 @@ Options:
 Additional arguments are forwarded to teleop_hand_and_arm.py, including its
 recording options: --record, --task-dir, --task-name, --task-goal,
 --task-desc, --task-steps. Recording is disabled unless --record is passed.
+Add --record-audio (together with --record) to also record the G1 microphone
+into each episode's audios/ folder.
 
 Example:
   $0 --record --task-name "pick cube" --task-dir ./utils/data/
+  $0 --record --record-audio --task-name "pick cube"
 EOF
 }
 

@@ -263,6 +263,32 @@ The most important mode controls are:
 - `G1_TELEOP_EE=dex1|dex3|inspire_ftp|inspire_dfx|brainco`
 - `G1_TELEIMAGER_CAMERA_BACKEND=opencv|realsense`
 
+## Recording Audio
+
+The G1 microphone is attached to PC1, which streams it on the wired robot
+network as UDP multicast (`239.168.123.161:5555`, 16 kHz / 16-bit / mono PCM).
+The xr_teleoperate fork can save it with each episode:
+
+```bash
+./start_xr_teleoperate.sh --record --record-audio --task-name "pick cube"
+```
+
+`--record-audio` only works together with `--record`, and both launchers forward
+it (for example `./demo.sh --record --record-audio`). Each episode's `audios/`
+folder then holds one `audio_<frame>_mic_0.npy` per frame plus a playable
+`audio.wav`.
+
+Notes:
+
+- Requires the fork's `--record-audio` support, so pull the latest
+  `~/xr_teleoperate` on PC2 first.
+- The teleop program exits at startup if no microphone stream arrives within
+  5 seconds. Check `ping 192.168.123.161`, and that the robot's Voice Assistant
+  is not in "Closed mode" (that mode has been reported to produce an all-zero
+  stream; the program warns when it sees one).
+- `pc2/audio/record_g1_mic.py` in this repo records the same stream standalone,
+  which is handy for checking the microphone without starting teleoperation.
+
 ## RealSense Camera
 
 The G1 head camera can be used through teleimager's native RealSense backend
