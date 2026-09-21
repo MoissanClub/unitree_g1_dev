@@ -288,6 +288,42 @@ Notes:
   stream; the program warns when it sees one).
 - `pc2/audio/record_g1_mic.py` in this repo records the same stream standalone,
   which is handy for checking the microphone without starting teleoperation.
+- While the arms move, the robot's own motors add noise to the microphone, and
+  speech from a couple of metres away can be hard to hear. The recorder saves
+  the stream unmodified; clean it offline with `pc2/audio/clean_audio.py`
+  (see below).
+
+### Cleaning up motor noise (offline)
+
+`pc2/audio/clean_audio.py` runs a neural speech-enhancement model over a
+recording and normalises its loudness. It is meant for a laptop or desktop, not
+the robot, and never modifies the input: it writes a new WAV next to it with
+exactly the same length, so it still lines up with the video.
+
+```bash
+pip install numpy scipy
+pip install pyrnnoise                          # --engine rnnoise
+pip install deepfilternet torch torchaudio     # --engine deepfilternet
+
+cd pc2/audio
+./clean_audio.py "…/sound run/episode_0007" --engine both
+# -> episode_0007/audios/audio_rnnoise.wav and audio_deepfilternet.wav
+```
+
+- `--engine deepfilternet` (default) is the higher-quality model. On our A/B
+  recordings it left the loud (speech) passages at about their original level,
+  while RNNoise lowered them by roughly 25 dB, so RNNoise is much more
+  aggressive and may cut quiet speech; compare both by ear with `--engine both`.
+  DeepFilterNet uses an NVIDIA GPU automatically if CUDA is available and is
+  otherwise fine on a CPU for short clips.
+- `--engine rnnoise` is small and installs everywhere.
+- `--wet 0.7` blends some of the original back in; `--atten-lim-db 12` (DeepFilterNet
+  only) limits how much noise is removed; `--no-normalize` skips the level
+  normalisation (`--target-dbfs`, `--max-gain-db` tune it).
+- An input can be a WAV, an episode directory, or a task directory (every
+  `episode_*/audios/audio.wav` under it is processed).
+- Keep `audio.wav` and the per-frame `.npy` files as the raw record; use the
+  cleaned WAV for listening and demos.
 
 ## RealSense Camera
 
