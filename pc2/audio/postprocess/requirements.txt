@@ -1,0 +1,21 @@
+# Python dependencies for clean_audio.py (offline denoising; run on a laptop/desktop, not the robot).
+#
+#     pip install -r requirements.txt
+#
+# Needs Python 3.9+. Delete the lines of the engine you do not use.
+# For an NVIDIA GPU (--engine deepfilternet), install a CUDA build of torch first
+# (https://pytorch.org/get-started/locally/); the CPU build is fine for short clips.
+
+# Always required. Keep numpy<2: deepfilternet 0.5.6 requires it, and with the pin pip picks a
+# SciPy that supports NumPy 1.x. A newer SciPy fails on import with
+# "module 'numpy' has no attribute 'long'".
+numpy<2
+scipy
+
+# --engine rnnoise
+pyrnnoise
+
+# --engine deepfilternet
+deepfilternet
+torch
+torchaudio

@@ -32,11 +32,14 @@ the speech level (90th percentile of 20 ms RMS) reaches --target-dbfs, limited b
 and a soft limiter keeps rare loud clicks from clipping. Very quiet clips are only amplified
 up to that cap.
 
-INSTALL (pick what you need; Python 3.9+)
------------------------------------------
-    pip install numpy scipy                   # always required
-    pip install pyrnnoise                     # for --engine rnnoise
-    pip install deepfilternet torch torchaudio    # for --engine deepfilternet
+INSTALL (Python 3.9+)
+---------------------
+    pip install -r requirements.txt           # in this folder; delete the lines of an engine you skip
+That installs numpy, scipy (always required), pyrnnoise (for --engine rnnoise) and deepfilternet,
+torch, torchaudio (for --engine deepfilternet). Keep the "numpy<2" pin: deepfilternet 0.5.6 requires numpy<2, and pip would otherwise downgrade
+numpy under an already-installed SciPy 1.18+ (which needs numpy 2), so that
+"from scipy.io import wavfile" fails with "module 'numpy' has no attribute 'long'". If you hit
+that, run:  pip install "numpy<2" "scipy<1.18" "contourpy<1.4"
 On an Ubuntu box with an NVIDIA GPU, install a CUDA build of torch first if you want the GPU
 (see https://pytorch.org/get-started/locally/). deepfilternet 0.5.6 imports a torchaudio module
 that newer torchaudio releases removed; this script installs a small shim for that, so the

@@ -290,22 +290,19 @@ Notes:
   which is handy for checking the microphone without starting teleoperation.
 - While the arms move, the robot's own motors add noise to the microphone, and
   speech from a couple of metres away can be hard to hear. The recorder saves
-  the stream unmodified; clean it offline with `pc2/audio/clean_audio.py`
-  (see below).
+  the stream unmodified; clean it offline with
+  `pc2/audio/postprocess/clean_audio.py` (see below).
 
 ### Cleaning up motor noise (offline)
 
-`pc2/audio/clean_audio.py` runs a neural speech-enhancement model over a
+`pc2/audio/postprocess/clean_audio.py` runs a neural speech-enhancement model over a
 recording and normalises its loudness. It is meant for a laptop or desktop, not
 the robot, and never modifies the input: it writes a new WAV next to it with
 exactly the same length, so it still lines up with the video.
 
 ```bash
-pip install numpy scipy
-pip install pyrnnoise                          # --engine rnnoise
-pip install deepfilternet torch torchaudio     # --engine deepfilternet
-
-cd pc2/audio
+cd pc2/audio/postprocess
+pip install -r requirements.txt   # numpy<2 is pinned on purpose: deepfilternet needs it
 ./clean_audio.py "…/sound run/episode_0007" --engine both
 # -> episode_0007/audios/audio_rnnoise.wav and audio_deepfilternet.wav
 ```
