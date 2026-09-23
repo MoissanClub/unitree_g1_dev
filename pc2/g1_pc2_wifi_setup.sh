@@ -26,9 +26,10 @@ GATEWAY=""
 DNS="$DEFAULT_DNS"
 DNS_EXPLICIT=0
 IFACE=""
-CONN_NAME="g1-pc2-wifi"
+CONN_NAME=""
+CONN_UUID=""
 FIX_RESOLV=0
-INSTALL_BOOT_SERVICE=1
+INSTALL_BOOT_SERVICE=0
 ENABLE_NM_BOOT=0
 DRY_RUN=0
 YES=0
@@ -65,9 +66,10 @@ Options:
   --gateway IPv4                 Default gateway for static IPv4.
   --dns LIST                     Comma-separated DNS servers. Default for static: 1.1.1.1,8.8.8.8.
   --iface IFACE                  Wi-Fi interface. Autodetects if omitted, usually wlan0.
-  --connection-name NAME         NetworkManager profile name. Default: g1-pc2-wifi.
+  --connection-name NAME         NetworkManager profile name. Default: SSID.
   --fix-resolv-conf              If DNS lookup fails, write /etc/resolv.conf with --dns servers.
-  --no-boot-service              Do not install the one-shot boot unblock/connect service.
+  --boot-service                 Install an optional one-shot Wi-Fi radio unblock service.
+  --no-boot-service              Disable any previous boot service; do not install one (default).
   --enable-networkmanager-at-boot Enable NetworkManager service at boot.
   --force-unitree-subnet         Allow Wi-Fi static IP in 192.168.123.0/24. Normally refused.
   --wait SECONDS                 nmcli activation timeout. Default: 45.
@@ -82,8 +84,9 @@ Safety notes:
     allowed to become the default route for non-local traffic.
   - It refuses Wi-Fi static addresses in 192.168.123.0/24 by default, because PC2's
     Unitree Ethernet side is normally 192.168.123.164 and route conflicts can break access.
-  - The installed boot service is one-shot: it unblocks Wi-Fi, enables the radio,
-    tries to activate this profile, then exits. It is not a long-running daemon.
+  - NetworkManager handles saved-network selection and autoconnection.
+  - No custom boot service is normally needed. The optional service only unblocks
+    Wi-Fi and enables the radio; it does not select a profile.
 USAGE
 }
 
@@ -131,6 +134,7 @@ while [[ $# -gt 0 ]]; do
     --iface) need_value "$1" "${2:-}"; IFACE="$2"; shift 2 ;;
     --connection-name) need_value "$1" "${2:-}"; CONN_NAME="$2"; shift 2 ;;
     --fix-resolv-conf) FIX_RESOLV=1; shift ;;
+    --boot-service) INSTALL_BOOT_SERVICE=1; shift ;;
     --no-boot-service) INSTALL_BOOT_SERVICE=0; shift ;;
     --enable-networkmanager-at-boot) ENABLE_NM_BOOT=1; shift ;;
     --force-unitree-subnet) FORCE_UNITREE_SUBNET=1; shift ;;
@@ -142,6 +146,8 @@ while [[ $# -gt 0 ]]; do
     *) usage; die "Unknown option: $1" ;;
   esac
 done
+
+CONN_NAME="${CONN_NAME:-$SSID}"
 
 require_cmds() {
   local missing=0 cmd
@@ -208,7 +214,7 @@ About to configure Wi-Fi on PC2:
   ipv4:             ${STATIC_IP:-DHCP/auto}
   gateway:          ${GATEWAY:-auto/none}
   dns:              $([[ -n "$STATIC_IP" || "$DNS_EXPLICIT" -eq 1 ]] && echo "$DNS" || echo "DHCP-provided")
-  boot one-shot:    $([[ "$INSTALL_BOOT_SERVICE" -eq 1 ]] && echo yes || echo no)
+  boot one-shot:    $([[ "$INSTALL_BOOT_SERVICE" -eq 1 ]] && echo "install radio unblock service" || echo "disable any previous service")
 
 This should not change PC2's wired 192.168.123.164 connection.
 EOF
@@ -217,13 +223,11 @@ EOF
 }
 
 ensure_networkmanager() {
-  if nmcli general status >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if command -v systemctl >/dev/null 2>&1; then
-    log "Starting NetworkManager for Wi-Fi setup."
-    run systemctl start NetworkManager.service || run systemctl start network-manager.service || true
+  if ! nmcli general status >/dev/null 2>&1; then
+    if command -v systemctl >/dev/null 2>&1; then
+      log "Starting NetworkManager for Wi-Fi setup."
+      run systemctl start NetworkManager.service || run systemctl start network-manager.service || true
+    fi
   fi
 
   nmcli general status >/dev/null 2>&1 || die "nmcli cannot talk to NetworkManager. Start/install NetworkManager first."
@@ -270,8 +274,22 @@ scan_wifi() {
   nmcli -f IN-USE,SSID,SIGNAL,SECURITY device wifi list ifname "$IFACE" || true
 }
 
-profile_exists() {
-  nmcli -t -f NAME connection show "$CONN_NAME" >/dev/null 2>&1
+resolve_connection() {
+  local rc connection_type
+  # With a profile selector, nmcli needs setting.property fields, not NAME/UUID.
+  if CONN_UUID="$(nmcli -g connection.uuid connection show id "$CONN_NAME" 2>/dev/null)"; then
+    [[ -n "$CONN_UUID" ]] || die "NetworkManager returned no UUID for '$CONN_NAME'."
+    if [[ "$CONN_UUID" == *$'\n'* ]]; then
+      die "Multiple profiles named '$CONN_NAME'. Inspect 'nmcli -f NAME,UUID,TYPE connection show' and rename or delete duplicates by UUID before rerunning."
+    fi
+    connection_type="$(nmcli -g connection.type connection show uuid "$CONN_UUID")"
+    [[ "$connection_type" == "802-11-wireless" ]] || die "Profile '$CONN_NAME' is not Wi-Fi; use a different --connection-name."
+  else
+    rc=$?
+    # Only nmcli's not-found status means a new profile is needed.
+    [[ "$rc" -eq 10 ]] || die "Cannot look up profile '$CONN_NAME' (nmcli exit $rc)."
+    CONN_UUID=""
+  fi
 }
 
 configure_connection() {
@@ -279,17 +297,25 @@ configure_connection() {
 
   local dns_nm
   dns_nm="$(printf '%s' "$DNS" | tr ',' ' ')"
+  resolve_connection
 
-  if [[ "$OPEN_WIFI" -eq 1 && profile_exists ]]; then
+  if [[ "$OPEN_WIFI" -eq 1 && -n "$CONN_UUID" ]]; then
     log "Deleting existing profile '$CONN_NAME' so open-network security settings are clean."
-    run nmcli connection delete "$CONN_NAME"
+    run nmcli connection delete uuid "$CONN_UUID"
+    CONN_UUID=""
   fi
 
-  if profile_exists; then
+  if [[ -n "$CONN_UUID" ]]; then
     log "Updating existing NetworkManager profile: $CONN_NAME"
   else
     log "Creating NetworkManager profile: $CONN_NAME"
     run nmcli connection add type wifi ifname "$IFACE" con-name "$CONN_NAME" ssid "$SSID"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      CONN_UUID="<new-profile-uuid>"
+    else
+      resolve_connection
+      [[ -n "$CONN_UUID" ]] || die "Created profile '$CONN_NAME' could not be found."
+    fi
   fi
 
   # Route behavior matters more than link state here:
@@ -297,7 +323,7 @@ configure_connection() {
   # - `ipv4.route-metric 50` gives Wi-Fi a relatively preferred metric.
   # Together, that can shift internet-bound traffic from Ethernet to Wi-Fi
   # without actually shutting the wired interface down.
-  run nmcli connection modify "$CONN_NAME" \
+  run nmcli connection modify uuid "$CONN_UUID" \
     connection.interface-name "$IFACE" \
     connection.autoconnect yes \
     connection.autoconnect-priority 50 \
@@ -308,18 +334,21 @@ configure_connection() {
     ipv6.method ignore
 
   if [[ "$HIDDEN" -eq 1 ]]; then
-    run nmcli connection modify "$CONN_NAME" 802-11-wireless.hidden yes
+    run nmcli connection modify uuid "$CONN_UUID" 802-11-wireless.hidden yes
+  else
+    run nmcli connection modify uuid "$CONN_UUID" 802-11-wireless.hidden no
   fi
 
   if [[ "$OPEN_WIFI" -eq 0 ]]; then
-    run nmcli connection modify "$CONN_NAME" \
+    run nmcli connection modify uuid "$CONN_UUID" \
       802-11-wireless-security.key-mgmt wpa-psk \
+      802-11-wireless-security.psk-flags 0 \
       802-11-wireless-security.psk "$WIFI_PASSWORD"
   fi
 
   if [[ -n "$STATIC_IP" ]]; then
     log "Applying static IPv4: $STATIC_IP gateway $GATEWAY DNS $DNS"
-    run nmcli connection modify "$CONN_NAME" \
+    run nmcli connection modify uuid "$CONN_UUID" \
       ipv4.method manual \
       ipv4.addresses "$STATIC_IP" \
       ipv4.gateway "$GATEWAY" \
@@ -327,15 +356,15 @@ configure_connection() {
       ipv4.ignore-auto-dns yes
   else
     log "Using DHCP/auto IPv4."
-    run nmcli connection modify "$CONN_NAME" \
+    run nmcli connection modify uuid "$CONN_UUID" \
       ipv4.method auto \
       ipv4.addresses "" \
       ipv4.gateway ""
     if [[ "$DNS_EXPLICIT" -eq 1 ]]; then
       log "Overriding DHCP DNS with: $DNS"
-      run nmcli connection modify "$CONN_NAME" ipv4.dns "$dns_nm" ipv4.ignore-auto-dns yes
+      run nmcli connection modify uuid "$CONN_UUID" ipv4.dns "$dns_nm" ipv4.ignore-auto-dns yes
     else
-      run nmcli connection modify "$CONN_NAME" ipv4.dns "" ipv4.ignore-auto-dns no
+      run nmcli connection modify uuid "$CONN_UUID" ipv4.dns "" ipv4.ignore-auto-dns no
     fi
   fi
 }
@@ -345,7 +374,7 @@ activate_connection() {
 
   log "Activating Wi-Fi profile '$CONN_NAME'."
   run nmcli device wifi rescan ifname "$IFACE" || true
-  if ! nmcli --wait "$WAIT_SECONDS" connection up "$CONN_NAME" ifname "$IFACE"; then
+  if ! run nmcli --wait "$WAIT_SECONDS" connection up uuid "$CONN_UUID" ifname "$IFACE"; then
     nmcli device status || true
     nmcli -f GENERAL,IP4 device show "$IFACE" || true
     die "NetworkManager failed to activate '$CONN_NAME'. Check SSID/password/static IP/gateway."
@@ -426,16 +455,22 @@ show_final_wlan_summary() {
   fi
 }
 
-install_boot_service() {
-  [[ "$INSTALL_BOOT_SERVICE" -eq 1 ]] || return 0
+configure_boot_service() {
   [[ "$SCAN_ONLY" -eq 0 ]] || return 0
   command -v systemctl >/dev/null 2>&1 || { warn "systemctl not found; skipping boot service."; return 0; }
   [[ -d /run/systemd/system ]] || { warn "systemd not active; skipping boot service."; return 0; }
 
-  local rfkill_bin nmcli_bin ip_bin service_path
+  if [[ "$INSTALL_BOOT_SERVICE" -eq 0 ]]; then
+    if systemctl is-enabled --quiet g1-pc2-wifi.service; then
+      log "Disabling previous g1-pc2-wifi boot service; NetworkManager will select saved networks."
+      run systemctl disable g1-pc2-wifi.service
+    fi
+    return 0
+  fi
+
+  local rfkill_bin nmcli_bin service_path
   rfkill_bin="$(command -v rfkill)"
   nmcli_bin="$(command -v nmcli)"
-  ip_bin="$(command -v ip)"
   service_path="/etc/systemd/system/g1-pc2-wifi.service"
 
   log "Installing one-shot boot service: $service_path"
@@ -446,14 +481,15 @@ install_boot_service() {
 
   cat > "$service_path" <<EOF
 [Unit]
-Description=Unitree G1 PC2 Wi-Fi radio unblock and profile activation
+Description=Unitree G1 PC2 Wi-Fi radio unblock
 After=NetworkManager.service systemd-rfkill.service
 Wants=NetworkManager.service
 
 [Service]
 Type=oneshot
 TimeoutStartSec=60
-ExecStart=/bin/sh -c '$rfkill_bin unblock wlan || $rfkill_bin unblock wifi || $rfkill_bin unblock all || true; $nmcli_bin radio wifi on || true; $ip_bin link set "$IFACE" up || true; $nmcli_bin --wait 45 connection up "$CONN_NAME" ifname "$IFACE" || true'
+ExecStart=-$rfkill_bin unblock wlan
+ExecStart=$nmcli_bin radio wifi on
 RemainAfterExit=no
 
 [Install]
@@ -475,7 +511,7 @@ main() {
   configure_connection
   activate_connection
   check_connectivity
-  install_boot_service
+  configure_boot_service
   show_final_wlan_summary
 
   if [[ "$SCAN_ONLY" -eq 1 ]]; then

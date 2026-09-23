@@ -122,8 +122,32 @@ sudo ./g1_pc2_wifi_setup.sh \
   --yes
 ```
 
-This is normally a one-time setup step. Rerun it only if you need to change the
-Wi-Fi configuration on `g1-pc2`.
+Run setup once per Wi-Fi network. The profile name defaults to the SSID, so
+different SSIDs keep separate saved configurations. Rerunning setup for the
+same SSID updates its profile. `--connection-name NAME` overrides the name.
+NetworkManager automatically selects an available saved network; these profiles
+all use autoconnect priority 50, so equal-priority candidates favor the most
+recently connected network.
+
+No custom boot service is installed by default. A successful setup also disables
+any previously installed `g1-pc2-wifi.service`. NetworkManager itself must start
+at boot; use `--enable-networkmanager-at-boot` if needed. If PC2 has a recurring
+radio-blocking problem, opt in with `--boot-service`: it only unblocks Wi-Fi and
+enables the radio, leaving profile selection to NetworkManager.
+
+Older versions could create duplicate profiles named `g1-pc2-wifi`. The script
+does not delete or migrate these automatically. Inspect their UUIDs, SSIDs, and
+IP settings before renaming a profile to its SSID or removing an unwanted copy:
+
+```bash
+nmcli -f NAME,UUID,TYPE connection show
+nmcli -f connection,802-11-wireless,ipv4 connection show uuid UUID_TO_INSPECT
+sudo nmcli connection modify uuid UUID_TO_KEEP connection.id "LabWiFi"
+sudo nmcli connection delete uuid UUID_TO_REMOVE
+```
+
+Duplicate names for the selected profile now cause an error instead of an
+ambiguous update. Profile updates and activation use the resolved UUID.
 
 ## Optional: Uplink Wi-Fi Plus Local AP
 
