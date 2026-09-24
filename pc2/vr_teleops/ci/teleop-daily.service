@@ -1,0 +1,31 @@
+[Unit]
+Description=Fresh software-only XR teleop demo build
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=teleop-ci
+Group=teleop-ci
+WorkingDirectory=/var/lib/teleop-ci
+StateDirectory=teleop-ci
+ExecStart=/usr/bin/python3 /opt/teleop-ci/daily_demo_build.py --results-dir /var/lib/teleop-ci/results
+TimeoutStartSec=4h10min
+TimeoutStopSec=45s
+KillMode=control-group
+UMask=0077
+Nice=10
+CPUQuota=150%
+MemoryMax=6G
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/teleop-ci
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Block the default robot subnet and DDS multicast. Adjust for different wiring.
+IPAddressDeny=192.168.123.0/24
+IPAddressDeny=224.0.0.0/4
+IPAddressDeny=ff00::/8

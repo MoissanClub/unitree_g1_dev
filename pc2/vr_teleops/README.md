@@ -17,12 +17,19 @@ implementation lives in the downstream `xr_teleoperate` checkout referenced by
 
 ## Included Scripts
 
+For the manual build, frozen candidate trial, and explicit demo promotion/rollback
+workflow, see [deployment/README.md](deployment/README.md). The candidate is tested
+by a human as `teleops-ci`, and the exact release is then selected for `demo`.
+No scheduler is needed. The earlier report-only software build is documented in
+[DAILY_BUILD.md](DAILY_BUILD.md).
+
 - `setup_pc2_xr_teleop.sh`: one-time setup for the XR teleop stack on PC2
 - `start_brainco_hand_server.sh`: starts the BrainCo hand server
 - `start_teleimager.sh`: starts the teleimager server
 - `start_xr_teleoperate.sh`: starts the main XR teleoperation app
 - `demo.sh`: recommended launcher for BrainCo, teleimager, and XR as one supervised session
 - `common_teleop_env.sh`: shared environment and auto-detection helpers used by the launchers
+- `daily_demo_build.py`: fresh software build, bounded workspace retention, and per-run reports
 
 ## How This Folder Fits The Stack
 
@@ -120,6 +127,24 @@ Other useful options:
 ./setup_pc2_xr_teleop.sh --input-mode hand --ee brainco
 ./setup_pc2_xr_teleop.sh --camera-backend realsense --realsense-serial 123456789
 ```
+
+Every pip install now uses `python-constraints.txt` to keep NumPy 1.26.4 and
+OpenCV 4.11.0.86 compatible. Conda environment creation uses only conda-forge
+(`--override-channels`), so it does not require accepting Anaconda default-channel
+terms. If an old shell exports a missing `PIP_CONSTRAINT` file, run
+`unset PIP_CONSTRAINT` before setup; the checked-in constraints still apply.
+Submodule Python project files are checked before installing dependencies, and
+final verification includes `pip check` and synthetic OpenCV/Pinocchio checks.
+`G1_TELEOP_BUILD_JOBS` overrides native build parallelism (default: `nproc`).
+`G1_TELEOP_XR_URL` selects the source URL for a missing XR checkout; existing
+checkouts keep their remote. The daily runner defaults to the MoissanClub fork.
+`G1_TELEOP_TELEIMAGER_URL` optionally overrides the teleimager submodule URL while
+retaining its pinned commit; the deployment builder uses the public upstream URL.
+
+Deployment runtime launchers accept `TELEOP_CONFIG_FILE`, `G1_TELEOP_CONDA_ROOT`,
+`G1_TELEIMAGER_CONFIG`, and `XR_TELEOP_CERT`/`XR_TELEOP_KEY` overrides. This allows
+frozen release sources and separate per-account writable configuration and TLS.
+Existing standalone launches retain their home-directory defaults.
 
 Important setup choices:
 

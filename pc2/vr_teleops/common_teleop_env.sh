@@ -5,7 +5,7 @@ set -Eeuo pipefail
 TELEOP_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${TELEOP_SCRIPT_DIR}/../load_g1_pc2_hardware.sh"
-TELEOP_CONFIG_FILE="${HOME}/.config/xr_teleoperate/pc2_teleop.env"
+export TELEOP_CONFIG_FILE="${TELEOP_CONFIG_FILE:-${HOME}/.config/xr_teleoperate/pc2_teleop.env}"
 
 teleop_log() {
   printf '\033[1;34m[teleop]\033[0m %s\n' "$*" >&2
@@ -85,6 +85,12 @@ teleop_detect_img_server_ip() {
 
 teleop_source_conda() {
   local conda_sh=""
+  if [[ -n "${G1_TELEOP_CONDA_ROOT:-}" ]]; then
+    conda_sh="${G1_TELEOP_CONDA_ROOT}/etc/profile.d/conda.sh"
+    [[ -r "${conda_sh}" ]] || teleop_die "Missing release Conda installation: ${conda_sh}"
+    source "${conda_sh}"
+    return 0
+  fi
 
   if command -v conda >/dev/null 2>&1; then
     local conda_base=""

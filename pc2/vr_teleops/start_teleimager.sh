@@ -9,7 +9,7 @@ source "${SCRIPT_DIR}/common_teleop_env.sh"
 teleop_export_common_env
 
 teleimager_config_path() {
-  local config_path="${G1_TELEOP_XR_REPO}/teleop/teleimager/cam_config_server.yaml"
+  local config_path="${G1_TELEIMAGER_CONFIG:-${G1_TELEOP_XR_REPO}/teleop/teleimager/cam_config_server.yaml}"
   [[ -f "${config_path}" ]] || teleop_die "Missing teleimager camera config at ${config_path}."
   printf '%s\n' "${config_path}"
 }
@@ -188,8 +188,8 @@ PY
 }
 
 main() {
-  local cert_path="${HOME}/.config/xr_teleoperate/cert.pem"
-  local key_path="${HOME}/.config/xr_teleoperate/key.pem"
+  local cert_path="${XR_TELEOP_CERT:-${HOME}/.config/xr_teleoperate/cert.pem}"
+  local key_path="${XR_TELEOP_KEY:-${HOME}/.config/xr_teleoperate/key.pem}"
   local config_path=""
   local config_backend=""
   local camera_backend="${G1_TELEIMAGER_CAMERA_BACKEND}"

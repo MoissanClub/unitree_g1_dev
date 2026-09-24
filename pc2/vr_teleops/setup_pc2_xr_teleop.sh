@@ -62,6 +62,10 @@ RELEASE_UNITREE_CAMERA=0
 NO_PULL=0
 USER_ONLY=0
 SDK2_USER_PREFIX="${HOME}/.local/opt/unitree_sdk2"
+SOFTWARE_ONLY=0
+WORKSPACE_ROOT=""
+CONDA_ROOT=""
+BUILD_JOBS="${G1_TELEOP_BUILD_JOBS:-$(nproc)}"
 
 log() {
   printf '\033[1;34m[setup]\033[0m %s\n' "$*" >&2
@@ -85,6 +89,8 @@ This script follows TELE_OP.md for PC2, but reuses the existing local
 
 Options:
   --user-only              No sudo/system changes; require administrator-installed packages and device groups.
+  --software-only          With --user-only: build/check software, skip camera access/discovery; DDS uses loopback.
+  --workspace-root DIR     With --software-only: isolate checkouts, Miniforge, SDK and config in a new directory.
   --dds-iface IFACE         DDS interface for robot traffic. Default: auto-detect.
   --wifi-iface IFACE        Interface whose IPv4 should be advertised to Quest. Default: default route.
   --camera-backend TYPE     teleimager camera backend: opencv or realsense. Default: ${DEFAULT_CAMERA_BACKEND}
@@ -113,6 +119,8 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --user-only) USER_ONLY=1; shift ;;
+    --software-only) SOFTWARE_ONLY=1; shift ;;
+    --workspace-root) [[ $# -ge 2 && -n "$2" ]] || die "--workspace-root requires a directory"; WORKSPACE_ROOT="$2"; shift 2 ;;
     --dds-iface) DDS_IFACE="$2"; shift 2 ;;
     --wifi-iface) WIFI_IFACE="$2"; shift 2 ;;
     --camera-backend) CAMERA_BACKEND="$2"; shift 2 ;;
@@ -139,6 +147,28 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "${SOFTWARE_ONLY}" -eq 1 || -n "${WORKSPACE_ROOT}" ]]; then
+  [[ "${USER_ONLY}" -eq 1 ]] || die "--software-only and --workspace-root require --user-only."
+  [[ "${SOFTWARE_ONLY}" -eq 1 && -n "${WORKSPACE_ROOT}" ]] || die "Use --software-only and --workspace-root together to protect the normal runtime configuration."
+fi
+if [[ -n "${WORKSPACE_ROOT}" ]]; then
+  WORKSPACE_ROOT="$(realpath -m "${WORKSPACE_ROOT}")"
+  [[ ! -e "${WORKSPACE_ROOT}" ]] || die "--workspace-root must be a new directory; refusing to reuse an existing installation."
+  XR_REPO_DIR="${WORKSPACE_ROOT}/xr_teleoperate"
+  BRAINCO_SERVICE_DIR="${WORKSPACE_ROOT}/brainco_hand_service"
+  SDK2_DIR="${WORKSPACE_ROOT}/unitree_sdk2"
+  SDK2_PY_DIR="${WORKSPACE_ROOT}/unitree_sdk2_python"
+  UNITREE_ROS2_DIR="${WORKSPACE_ROOT}/unitree_ros2"
+  CONFIG_DIR="${WORKSPACE_ROOT}/config"
+  SDK2_USER_PREFIX="${WORKSPACE_ROOT}/sdk2-install"
+  CONDA_ROOT="${WORKSPACE_ROOT}/miniforge3"
+fi
+if [[ "${SOFTWARE_ONLY}" -eq 1 ]]; then
+  DDS_IFACE=lo
+  WIFI_IFACE=lo
+  MOTION_MODE=no-motion
+fi
+
 if [[ "${USER_ONLY}" -eq 1 ]]; then
   [[ "${EUID}" -ne 0 ]] || die "--user-only must run as the demo/login user, not root."
   [[ "${RELEASE_UNITREE_CAMERA}" -eq 0 ]] || die "Camera service changes must be performed separately by an administrator."
@@ -147,6 +177,7 @@ if [[ "${USER_ONLY}" -eq 1 ]]; then
 fi
 
 [[ "${CAMERA_BACKEND}" == "opencv" || "${CAMERA_BACKEND}" == "realsense" ]] || die "--camera-backend must be opencv or realsense"
+[[ "${BUILD_JOBS}" =~ ^[1-9][0-9]*$ ]] || die "G1_TELEOP_BUILD_JOBS must be a positive integer."
 [[ "${ARM_MODEL}" == "G1_23" || "${ARM_MODEL}" == "G1_29" ]] || die "--arm must be G1_23 or G1_29"
 [[ "${INPUT_MODE}" == "hand" || "${INPUT_MODE}" == "controller" ]] || die "--input-mode must be hand or controller"
 case "${EE_TYPE}" in
@@ -174,7 +205,7 @@ ensure_repo() {
   local url="$1"
   local dir="$2"
 
-  if [[ -d "${dir}/.git" ]]; then
+  if [[ -e "${dir}/.git" ]]; then
     log "Using existing checkout at ${dir}"
     git_update "${dir}"
     return 0
@@ -309,6 +340,7 @@ install_apt_deps() {
 }
 
 ensure_camera_access() {
+  [[ "${SOFTWARE_ONLY}" -eq 0 ]] || return 0
   local login_user="${SUDO_USER:-${USER:-$(id -un)}}"
   if ! getent group video >/dev/null 2>&1; then
     warn "The system has no 'video' group; camera access must be configured manually."
@@ -332,6 +364,12 @@ ensure_camera_access() {
 }
 
 ensure_miniconda() {
+  if [[ -n "${CONDA_ROOT}" ]]; then
+    local installer="${WORKSPACE_ROOT}/Miniforge3.sh"
+    run curl -fL --retry 3 "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-${SYSTEM_ARCH}.sh" -o "${installer}"
+    run bash "${installer}" -b -p "${CONDA_ROOT}"
+    return 0
+  fi
   if command -v conda >/dev/null 2>&1 || \
      [[ -f "${HOME}/miniforge3/etc/profile.d/conda.sh" ]] || \
      [[ -f "${HOME}/mambaforge/etc/profile.d/conda.sh" ]] || \
@@ -349,6 +387,11 @@ ensure_miniconda() {
 
 source_conda() {
   local conda_sh=""
+  if [[ -n "${CONDA_ROOT}" ]]; then
+    [[ -r "${CONDA_ROOT}/etc/profile.d/conda.sh" ]] || die "Missing isolated Miniforge installation."
+    source "${CONDA_ROOT}/etc/profile.d/conda.sh"
+    return 0
+  fi
 
   if command -v conda >/dev/null 2>&1; then
     local conda_base=""
@@ -385,15 +428,19 @@ ensure_conda_env() {
 
   if ! conda env list | awk '{print $1}' | grep -qx "${CONDA_ENV}"; then
     log "Creating conda env '${CONDA_ENV}'..."
-    run conda create -n "${CONDA_ENV}" -y pip python=3.10 pinocchio=3.1.0 numpy=1.26.4 nlopt=2.7.1 -c conda-forge
+    run conda create -n "${CONDA_ENV}" -y pip python=3.10 pinocchio=3.1.0 numpy=1.26.4 nlopt=2.7.1 --override-channels -c conda-forge
   else
     log "Conda env '${CONDA_ENV}' already exists; ensuring key packages are present."
-    run conda install -n "${CONDA_ENV}" -y pip python=3.10 pinocchio=3.1.0 numpy=1.26.4 nlopt=2.7.1 -c conda-forge
+    run conda install -n "${CONDA_ENV}" -y pip python=3.10 pinocchio=3.1.0 numpy=1.26.4 nlopt=2.7.1 --override-channels -c conda-forge
   fi
 }
 
 run_in_conda() {
   conda run --no-capture-output -n "${CONDA_ENV}" "$@"
+}
+
+pip_install() {
+  run_in_conda python -m pip install -c "${SCRIPT_DIR}/python-constraints.txt" "$@"
 }
 
 resolve_cyclonedds_home() {
@@ -452,7 +499,7 @@ setup_dds() {
   log "Reusing local DDS installer for interface ${DDS_IFACE}"
   local -a extra_args=()
   if [[ "${USER_ONLY}" -eq 1 ]]; then
-    extra_args=(--skip-deps --no-test --workspace "${UNITREE_ROS2_DIR}")
+    extra_args=(--skip-deps --no-test --workspace "${UNITREE_ROS2_DIR}" --parallel-workers "${BUILD_JOBS}")
   fi
   run bash "${PC2_DIR}/setup_unitree_g1_pc2_dds.sh" --iface "${DDS_IFACE}" --yes "${extra_args[@]}"
 }
@@ -467,7 +514,7 @@ ensure_unitree_sdk2() {
   ensure_repo "https://github.com/unitreerobotics/unitree_sdk2.git" "${SDK2_DIR}"
   log "Building unitree_sdk2 in ${build_dir} (isolated for ${OS_ID} ${OS_VERSION}/${SYSTEM_ARCH})"
   run cmake -S "${SDK2_DIR}" -B "${build_dir}" -DBUILD_EXAMPLES=OFF "${cmake_args[@]}"
-  run cmake --build "${build_dir}" -j"$(nproc)"
+  run cmake --build "${build_dir}" -j"${BUILD_JOBS}"
   if [[ "${USER_ONLY}" -eq 1 ]]; then
     run cmake --install "${build_dir}"
   else
@@ -481,8 +528,8 @@ ensure_unitree_sdk2_python() {
   export CYCLONEDDS_HOME
 
   log "Installing unitree_sdk2_python into conda env '${CONDA_ENV}' with CycloneDDS at ${CYCLONEDDS_HOME}"
-  run_in_conda python -m pip install --upgrade pip
-  run_in_conda python -m pip install -e "${SDK2_PY_DIR}"
+  pip_install --upgrade pip
+  pip_install -e "${SDK2_PY_DIR}"
 }
 
 apply_teleimager_patch() {
@@ -518,13 +565,25 @@ apply_teleimager_patch() {
   fi
 }
 
-ensure_xr_teleoperate() {
-  ensure_repo "https://github.com/unitreerobotics/xr_teleoperate.git" "${XR_REPO_DIR}"
-  if [[ -d "${XR_REPO_DIR}/.git" ]]; then
+prepare_xr_sources() {
+  ensure_repo "${G1_TELEOP_XR_URL:-https://github.com/unitreerobotics/xr_teleoperate.git}" "${XR_REPO_DIR}"
+  if [[ -e "${XR_REPO_DIR}/.git" ]]; then
+    if [[ -n "${G1_TELEOP_TELEIMAGER_URL:-}" ]]; then
+      run git -C "${XR_REPO_DIR}" config -f .gitmodules submodule.teleop/teleimager.url "${G1_TELEOP_TELEIMAGER_URL}"
+    fi
     log "Syncing xr_teleoperate submodules"
     run git -C "${XR_REPO_DIR}" submodule sync --recursive
     run git -C "${XR_REPO_DIR}" submodule update --init --recursive --depth 1
   fi
+
+  local project=""
+  for project in teleop/televuer teleop/teleimager teleop/robot_control/dex-retargeting; do
+    [[ -f "${XR_REPO_DIR}/${project}/pyproject.toml" || -f "${XR_REPO_DIR}/${project}/setup.py" ]] || \
+      die "Missing Python project files in ${XR_REPO_DIR}/${project}. Inspect its git status and restore/initialize the submodule before retrying."
+  done
+}
+
+ensure_xr_teleoperate() {
 
   apply_teleimager_patch
   # Disable the vendor's sudo/modprobe fallback for unprivileged sessions,
@@ -543,15 +602,15 @@ if 'TELEIMAGER_SKIP_UVC_RELOAD' not in text:
 PY
 
   log "Installing xr_teleoperate Python dependencies"
-  run_in_conda python -m pip install -r "${XR_REPO_DIR}/requirements.txt"
-  run_in_conda python -m pip install -e "${XR_REPO_DIR}/teleop/televuer"
-  run_in_conda python -m pip install -e "${XR_REPO_DIR}/teleop/teleimager[server]"
-  run_in_conda python -m pip install -e "${XR_REPO_DIR}/teleop/robot_control/dex-retargeting"
-  run_in_conda python -m pip install 'params-proto<3' 'vuer[all]==0.0.60'
+  pip_install -r "${XR_REPO_DIR}/requirements.txt"
+  pip_install -e "${XR_REPO_DIR}/teleop/televuer"
+  pip_install -e "${XR_REPO_DIR}/teleop/teleimager[server]"
+  pip_install -e "${XR_REPO_DIR}/teleop/robot_control/dex-retargeting"
+  pip_install 'params-proto<3' 'vuer[all]==0.0.60'
 
   if [[ "${CAMERA_BACKEND}" == "realsense" ]]; then
     log "Installing pyrealsense2 for teleimager RealSense mode"
-    if ! run_in_conda python -m pip install pyrealsense2; then
+    if ! pip_install pyrealsense2; then
       die "No compatible pyrealsense2 package was installed for ${SYSTEM_ARCH}. Use --camera-backend opencv, or build librealsense Python bindings for this JetPack release."
     fi
   fi
@@ -574,7 +633,7 @@ ensure_brainco_hand_service() {
   ensure_repo "https://github.com/unitreerobotics/brainco_hand_service.git" "${BRAINCO_SERVICE_DIR}"
   log "Building brainco_hand_service in ${build_dir} (isolated for ${OS_ID} ${OS_VERSION}/${SYSTEM_ARCH})"
   run cmake -S "${BRAINCO_SERVICE_DIR}" -B "${build_dir}" "${cmake_args[@]}"
-  run cmake --build "${build_dir}" -j"$(nproc)"
+  run cmake --build "${build_dir}" -j"${BUILD_JOBS}"
 }
 
 verify_installation() {
@@ -603,7 +662,7 @@ import ssl
 
 modules = {
     name: importlib.import_module(name)
-    for name in ("numpy", "pinocchio", "teleimager", "televuer", "dex_retargeting")
+    for name in ("numpy", "cv2", "pinocchio", "teleimager", "televuer", "dex_retargeting")
 }
 teleop_dir = Path(os.environ["XR_REPO_DIR"]).expanduser().resolve() / "teleop"
 expected_roots = {
@@ -619,7 +678,20 @@ for name, expected_root in expected_roots.items():
         )
 
 print(f"XR Python imports and editable sources: OK (OpenSSL: {ssl.OPENSSL_VERSION})")
+np, cv2, pin = modules['numpy'], modules['cv2'], modules['pinocchio']
+frame = np.zeros((16, 16, 3), dtype=np.uint8)
+ok, encoded = cv2.imencode('.png', frame)
+if not ok or not np.array_equal(cv2.imdecode(encoded, cv2.IMREAD_COLOR), frame):
+    raise RuntimeError('OpenCV/NumPy image round-trip failed')
+model = pin.buildSampleModelManipulator()
+data = model.createData()
+pin.forwardKinematics(model, data, pin.neutral(model))
+if not all(np.isfinite(pose.translation).all() for pose in data.oMi):
+    raise RuntimeError('Pinocchio synthetic forward kinematics failed')
+print('OpenCV/NumPy and synthetic Pinocchio checks: OK (no hardware)')
 PY
+
+  run_in_conda python -m pip check
 
   if [[ "${CAMERA_BACKEND}" == "realsense" ]]; then
     run_in_conda python -c 'import pyrealsense2; print("pyrealsense2 import: OK")'
@@ -691,6 +763,7 @@ release_unitree_camera_services() {
 }
 
 configure_teleimager() {
+  [[ "${SOFTWARE_ONLY}" -eq 0 ]] || { log "Skipping camera configuration in software-only mode."; return 0; }
   local config_file=""
   config_file="$(find "${XR_REPO_DIR}/teleop/teleimager" -type f -name 'cam_config_server.yaml' | head -n1 || true)"
   if [[ -z "${config_file}" ]]; then
@@ -698,7 +771,7 @@ configure_teleimager() {
     return 0
   fi
 
-  if [[ "${CAMERA_BACKEND}" == "opencv" ]]; then
+  if [[ "${SOFTWARE_ONLY}" -eq 0 && "${CAMERA_BACKEND}" == "opencv" ]]; then
     VIDEO_ID="$(detect_realsense_video_id)"
   fi
   if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
@@ -775,10 +848,10 @@ write_runtime_config() {
   fi
   [[ -n "${WIFI_IFACE}" ]] || WIFI_IFACE="${DDS_IFACE}"
 
-  if [[ "${CAMERA_BACKEND}" == "opencv" ]]; then
+  if [[ "${SOFTWARE_ONLY}" -eq 0 && "${CAMERA_BACKEND}" == "opencv" ]]; then
     VIDEO_ID="$(detect_realsense_video_id)"
   fi
-  if [[ "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
+  if [[ "${SOFTWARE_ONLY}" -eq 0 && "${CAMERA_BACKEND}" == "realsense" && -z "${REALSENSE_SERIAL}" ]]; then
     REALSENSE_SERIAL="$(detect_realsense_serial)" || die "No RealSense serial found. Check USB/device permissions or pass --realsense-serial."
   fi
 
@@ -812,7 +885,17 @@ export G1_TELEOP_CYCLONEDDS_HOME="${cyclonedds_home}"
 EOF
 }
 
+run_stage() {
+  log "STAGE: $1"
+  "$@"
+}
+
 main() {
+  log "STAGE: prerequisites"
+  [[ -r "${SCRIPT_DIR}/python-constraints.txt" ]] || die "Missing python-constraints.txt; update the complete launcher checkout."
+  if [[ -n "${PIP_CONSTRAINT:-}" && ! -r "${PIP_CONSTRAINT}" ]]; then
+    die "PIP_CONSTRAINT points to a missing file: ${PIP_CONSTRAINT}. Unset it to use this repository's constraints."
+  fi
   if [[ "${USER_ONLY}" -eq 1 ]]; then
     local package=""
     local -a missing=()
@@ -826,7 +909,9 @@ main() {
     done
     ((${#missing[@]} == 0)) || die "Ask an administrator to apt-install: ${missing[*]}"
     [[ -r "/opt/ros/${G1_ROS_DISTRO}/setup.bash" ]] || die "Ask an administrator to install ROS ${G1_ROS_DISTRO}."
-    id -nG | tr ' ' '\n' | grep -qx dialout || die "Ask an administrator to add $(id -un) to dialout, then log in again."
+    if [[ "${SOFTWARE_ONLY}" -eq 0 ]]; then
+      id -nG | tr ' ' '\n' | grep -qx dialout || die "Ask an administrator to add $(id -un) to dialout, then log in again."
+    fi
   fi
   need_cmd git
   need_cmd curl
@@ -838,23 +923,29 @@ main() {
 
   install_apt_deps
   ensure_camera_access
-  ensure_miniconda
-  ensure_conda_env
-  setup_dds
-  ensure_unitree_sdk2
-  ensure_unitree_sdk2_python
-  ensure_xr_teleoperate
-  ensure_brainco_hand_service
-  ensure_certs
+  [[ -z "${WORKSPACE_ROOT}" ]] || mkdir -p "${WORKSPACE_ROOT}"
+  run_stage prepare_xr_sources
+  run_stage ensure_miniconda
+  run_stage ensure_conda_env
+  run_stage setup_dds
+  run_stage ensure_unitree_sdk2
+  run_stage ensure_unitree_sdk2_python
+  run_stage ensure_xr_teleoperate
+  run_stage ensure_brainco_hand_service
+  run_stage ensure_certs
   release_unitree_camera_services
-  configure_teleimager
-  write_runtime_config
-  verify_installation
+  run_stage configure_teleimager
+  run_stage write_runtime_config
+  run_stage verify_installation
 
   log "Setup complete."
-  log "Run ./start_brainco_hand_server.sh"
-  log "Run ./start_teleimager.sh"
-  log "Run ./start_xr_teleoperate.sh"
+  if [[ "${SOFTWARE_ONLY}" -eq 1 ]]; then
+    log "Software checks complete; camera access, DDS traffic, robot/hand motion and Quest operation were not tested."
+  else
+    log "Run ./start_brainco_hand_server.sh"
+    log "Run ./start_teleimager.sh"
+    log "Run ./start_xr_teleoperate.sh"
+  fi
 }
 
 main "$@"

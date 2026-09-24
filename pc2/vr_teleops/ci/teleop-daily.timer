@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily software-only XR teleop build at 03:00 Shanghai time
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Asia/Shanghai
+RandomizedDelaySec=15min
+Persistent=false
+Unit=teleop-daily.service
+
+[Install]
+WantedBy=timers.target
