@@ -141,6 +141,12 @@ teleop_source_unitree_ros2() {
 
 teleop_export_common_env() {
   teleop_load_config
+  export G1_TELEOP_PRIVILEGE_MODE="${G1_TELEOP_PRIVILEGE_MODE:-sudo}"
+  case "${G1_TELEOP_PRIVILEGE_MODE}" in
+    user) export TELEIMAGER_SKIP_UVC_RELOAD=1 ;;
+    sudo) ;;
+    *) teleop_die "G1_TELEOP_PRIVILEGE_MODE must be user or sudo." ;;
+  esac
 
   export G1_TELEOP_CONDA_ENV="${G1_TELEOP_CONDA_ENV:-tv}"
   export G1_TELEOP_XR_REPO="${G1_TELEOP_XR_REPO:-${HOME}/xr_teleoperate}"

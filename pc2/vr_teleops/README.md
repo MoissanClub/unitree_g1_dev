@@ -39,6 +39,17 @@ folder's runtime config, while low-level teleop behavior belongs upstream in
 
 ## Privilege Model
 
+For a separate account without sudo privileges, follow [DEMO_ACCOUNT.md](DEMO_ACCOUNT.md).
+`setup_pc2_xr_teleop.sh --user-only` checks administrator-installed prerequisites,
+installs the C++ SDK under `~/.local/opt/unitree_sdk2`, and builds the user's DDS
+workspace with `--skip-deps --no-test`. It writes
+`G1_TELEOP_PRIVILEGE_MODE=user` to the runtime config. This mode runs BrainCo
+without sudo, disables teleimager's UVC driver reload, and uses a per-user
+session lock. It refuses existing hand/camera services rather than terminating
+other sessions. Camera ownership and vendor-service conflicts need to be
+resolved by their owner or an administrator before launch. The default setup
+and runtime privilege mode remains unchanged for existing accounts.
+
 Run these scripts as follows:
 
 - `setup_pc2_xr_teleop.sh`: run as the normal login user, not with `sudo`

@@ -186,7 +186,7 @@ main() {
   command -v setsid >/dev/null 2>&1 || teleop_die "Missing required command: setsid (util-linux)."
   server_bin="$(find_brainco_binary)" || teleop_die "brainco_hand_server was not found. Run ./setup_pc2_xr_teleop.sh first."
 
-  if [[ "${EUID}" -ne 0 ]]; then
+  if [[ "${EUID}" -ne 0 && "${G1_TELEOP_PRIVILEGE_MODE}" != user ]]; then
     local login_user="${USER:-$(id -un)}"
     teleop_log "Authenticating once, then starting the BrainCo retry supervisor as root."
     exec sudo env \

@@ -163,7 +163,21 @@ main() {
   fi
 
   teleop_export_common_env
-  command -v sudo >/dev/null 2>&1 || teleop_die "Missing required command: sudo."
+  if [[ "${G1_TELEOP_PRIVILEGE_MODE}" == user ]]; then
+    [[ "${EUID}" -ne 0 ]] || teleop_die "Run this session as the demo/login user, not root."
+    command -v flock >/dev/null 2>&1 || teleop_die "Missing flock (util-linux)."
+    mkdir -p "${HOME}/.cache/xr_teleoperate"
+    exec 9>"${HOME}/.cache/xr_teleoperate/session.lock"
+    flock -n 9 || teleop_die "A teleoperation session is already running for this account."
+    if pgrep -f '(^|/)(brainco_hand_server|start_brainco_hand_server\.sh|teleimager-server|start_teleimager\.sh)( |$)' >/dev/null; then
+      teleop_die "A hand/camera service is already running. Stop its owning session before launching; ask its owner or an administrator if needed."
+    fi
+    if ss -H -ltnu | awk '$5 ~ /:(60000|60001|55555)$/ { found = 1 } END { exit(found ? 0 : 1) }'; then
+      teleop_die "A camera endpoint is occupied. Stop its owning session before launching."
+    fi
+  else
+    command -v sudo >/dev/null 2>&1 || teleop_die "Missing required command: sudo."
+  fi
 
   local brainco_timeout="${G1_TELEOP_STACK_BRAINCO_TIMEOUT:-45}"
   local camera_timeout="${G1_TELEOP_STACK_CAMERA_TIMEOUT:-30}"
@@ -178,9 +192,11 @@ main() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
-  teleop_log "Authenticating sudo before starting the service stack."
-  sudo -v
-  stop_stale_services
+  if [[ "${G1_TELEOP_PRIVILEGE_MODE}" != user ]]; then
+    teleop_log "Authenticating sudo before starting the service stack."
+    sudo -v
+    stop_stale_services
+  fi
 
   stdbuf -oL -eL "${SCRIPT_DIR}/start_brainco_hand_server.sh" \
     > >(tee "${brainco_log}") 2>&1 &

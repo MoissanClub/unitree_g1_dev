@@ -60,6 +60,8 @@ SKIP_BRAINCO_SERVICE=0
 SKIP_VERIFY=0
 RELEASE_UNITREE_CAMERA=0
 NO_PULL=0
+USER_ONLY=0
+SDK2_USER_PREFIX="${HOME}/.local/opt/unitree_sdk2"
 
 log() {
   printf '\033[1;34m[setup]\033[0m %s\n' "$*" >&2
@@ -82,6 +84,7 @@ This script follows TELE_OP.md for PC2, but reuses the existing local
 ../setup_unitree_g1_pc2_dds.sh instead of rebuilding that logic here.
 
 Options:
+  --user-only              No sudo/system changes; require administrator-installed packages and device groups.
   --dds-iface IFACE         DDS interface for robot traffic. Default: auto-detect.
   --wifi-iface IFACE        Interface whose IPv4 should be advertised to Quest. Default: default route.
   --camera-backend TYPE     teleimager camera backend: opencv or realsense. Default: ${DEFAULT_CAMERA_BACKEND}
@@ -109,6 +112,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --user-only) USER_ONLY=1; shift ;;
     --dds-iface) DDS_IFACE="$2"; shift 2 ;;
     --wifi-iface) WIFI_IFACE="$2"; shift 2 ;;
     --camera-backend) CAMERA_BACKEND="$2"; shift 2 ;;
@@ -134,6 +138,13 @@ while [[ $# -gt 0 ]]; do
     *) die "Unknown option: $1" ;;
   esac
 done
+
+if [[ "${USER_ONLY}" -eq 1 ]]; then
+  [[ "${EUID}" -ne 0 ]] || die "--user-only must run as the demo/login user, not root."
+  [[ "${RELEASE_UNITREE_CAMERA}" -eq 0 ]] || die "Camera service changes must be performed separately by an administrator."
+  SKIP_APT=1
+  export TELEIMAGER_SKIP_UVC_RELOAD=1
+fi
 
 [[ "${CAMERA_BACKEND}" == "opencv" || "${CAMERA_BACKEND}" == "realsense" ]] || die "--camera-backend must be opencv or realsense"
 [[ "${ARM_MODEL}" == "G1_23" || "${ARM_MODEL}" == "G1_29" ]] || die "--arm must be G1_23 or G1_29"
@@ -312,6 +323,7 @@ ensure_camera_access() {
   fi
 
   if ! id -nG "${login_user}" | tr ' ' '\n' | grep -qx video; then
+    [[ "${USER_ONLY}" -eq 0 ]] || die "Ask an administrator to add ${login_user} to video, then log in again."
     log "Adding ${login_user} to the video group for V4L2 camera access"
     run sudo usermod -aG video "${login_user}"
   fi
@@ -438,16 +450,29 @@ setup_dds() {
   [[ -n "${DDS_IFACE}" ]] || die "DDS interface is empty; populate G1_DDS_IFACE in ${G1_HARDWARE_CONFIG_FILE}."
 
   log "Reusing local DDS installer for interface ${DDS_IFACE}"
-  run bash "${PC2_DIR}/setup_unitree_g1_pc2_dds.sh" --iface "${DDS_IFACE}" --yes
+  local -a extra_args=()
+  if [[ "${USER_ONLY}" -eq 1 ]]; then
+    extra_args=(--skip-deps --no-test --workspace "${UNITREE_ROS2_DIR}")
+  fi
+  run bash "${PC2_DIR}/setup_unitree_g1_pc2_dds.sh" --iface "${DDS_IFACE}" --yes "${extra_args[@]}"
 }
 
 ensure_unitree_sdk2() {
   local build_dir="${SDK2_DIR}/build-${BUILD_TAG}"
+  local -a cmake_args=()
+  if [[ "${USER_ONLY}" -eq 1 ]]; then
+    build_dir+="-user"
+    cmake_args=(-DCMAKE_INSTALL_PREFIX="${SDK2_USER_PREFIX}" -DCMAKE_INSTALL_LIBDIR=lib)
+  fi
   ensure_repo "https://github.com/unitreerobotics/unitree_sdk2.git" "${SDK2_DIR}"
   log "Building unitree_sdk2 in ${build_dir} (isolated for ${OS_ID} ${OS_VERSION}/${SYSTEM_ARCH})"
-  run cmake -S "${SDK2_DIR}" -B "${build_dir}" -DBUILD_EXAMPLES=OFF
+  run cmake -S "${SDK2_DIR}" -B "${build_dir}" -DBUILD_EXAMPLES=OFF "${cmake_args[@]}"
   run cmake --build "${build_dir}" -j"$(nproc)"
-  run sudo cmake --install "${build_dir}"
+  if [[ "${USER_ONLY}" -eq 1 ]]; then
+    run cmake --install "${build_dir}"
+  else
+    run sudo cmake --install "${build_dir}"
+  fi
 }
 
 ensure_unitree_sdk2_python() {
@@ -502,6 +527,20 @@ ensure_xr_teleoperate() {
   fi
 
   apply_teleimager_patch
+  # Disable the vendor's sudo/modprobe fallback for unprivileged sessions,
+  # including when no camera nodes exist. Keep the change idempotent.
+  python3 - "${XR_REPO_DIR}/teleop/teleimager/src/teleimager/image_server.py" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+if 'TELEIMAGER_SKIP_UVC_RELOAD' not in text:
+    anchor = 'def reload_uvc_driver():\n'
+    if text.count(anchor) != 1:
+        raise SystemExit('Cannot locate teleimager UVC reload function; review upstream changes.')
+    text = text.replace(anchor, anchor + '    if os.environ.get("TELEIMAGER_SKIP_UVC_RELOAD") == "1":\n        return\n', 1)
+    path.write_text(text)
+PY
 
   log "Installing xr_teleoperate Python dependencies"
   run_in_conda python -m pip install -r "${XR_REPO_DIR}/requirements.txt"
@@ -522,9 +561,19 @@ ensure_brainco_hand_service() {
   [[ "${SKIP_BRAINCO_SERVICE}" -eq 1 ]] && return 0
 
   local build_dir="${BRAINCO_SERVICE_DIR}/build-${BUILD_TAG}"
+  local -a cmake_args=()
+  if [[ "${USER_ONLY}" -eq 1 ]]; then
+    build_dir+="-user"
+    # Upstream links bare library names and hardcodes /usr/local/include/ddscxx
+    # rather than using find_package(unitree_sdk2).
+    cmake_args=(
+      "-DCMAKE_CXX_FLAGS=-I\"${SDK2_USER_PREFIX}/include\" -I\"${SDK2_USER_PREFIX}/include/ddscxx\""
+      "-DCMAKE_EXE_LINKER_FLAGS=-L\"${SDK2_USER_PREFIX}/lib\""
+    )
+  fi
   ensure_repo "https://github.com/unitreerobotics/brainco_hand_service.git" "${BRAINCO_SERVICE_DIR}"
   log "Building brainco_hand_service in ${build_dir} (isolated for ${OS_ID} ${OS_VERSION}/${SYSTEM_ARCH})"
-  run cmake -S "${BRAINCO_SERVICE_DIR}" -B "${build_dir}"
+  run cmake -S "${BRAINCO_SERVICE_DIR}" -B "${build_dir}" "${cmake_args[@]}"
   run cmake --build "${build_dir}" -j"$(nproc)"
 }
 
@@ -743,6 +792,7 @@ write_runtime_config() {
 
   cat > "${CONFIG_DIR}/pc2_teleop.env" <<EOF
 export G1_TELEOP_CONDA_ENV="${CONDA_ENV}"
+export G1_TELEOP_PRIVILEGE_MODE="$([[ "${USER_ONLY}" -eq 1 ]] && printf user || printf sudo)"
 export G1_TELEOP_DDS_IFACE="${DDS_IFACE}"
 export G1_TELEOP_WIFI_IFACE="${WIFI_IFACE}"
 export G1_TELEOP_IMG_SERVER_IP="${img_server_ip}"
@@ -763,9 +813,24 @@ EOF
 }
 
 main() {
+  if [[ "${USER_ONLY}" -eq 1 ]]; then
+    local package=""
+    local -a missing=()
+    for package in build-essential ca-certificates cmake curl git libboost-program-options-dev \
+      libfmt-dev libspdlog-dev libyaml-cpp-dev openssl pkg-config python3-pip v4l-utils \
+      psmisc iproute2 util-linux python3-colcon-common-extensions \
+      "ros-${G1_ROS_DISTRO}-rmw-cyclonedds-cpp" "ros-${G1_ROS_DISTRO}-rosidl-generator-dds-idl"; do
+      if [[ "$(dpkg-query -W -f='${Status}' "${package}" 2>/dev/null || true)" != 'install ok installed' ]]; then
+        missing+=("${package}")
+      fi
+    done
+    ((${#missing[@]} == 0)) || die "Ask an administrator to apt-install: ${missing[*]}"
+    [[ -r "/opt/ros/${G1_ROS_DISTRO}/setup.bash" ]] || die "Ask an administrator to install ROS ${G1_ROS_DISTRO}."
+    id -nG | tr ' ' '\n' | grep -qx dialout || die "Ask an administrator to add $(id -un) to dialout, then log in again."
+  fi
   need_cmd git
   need_cmd curl
-  need_cmd sudo
+  [[ "${USER_ONLY}" -eq 1 ]] || need_cmd sudo
   need_cmd python3
   need_cmd openssl
   need_cmd cmake
