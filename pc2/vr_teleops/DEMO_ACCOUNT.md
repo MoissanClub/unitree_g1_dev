@@ -5,19 +5,28 @@ new account `demo`. They assume the existing hardware profile and device rules
 already match this robot. `demo` never joins the sudo group. System provisioning
 is performed by `dwei`; the user installer and launchers run as `demo`.
 
-## 1. Account: dwei — create the account and install system dependencies
+Run everything on PC2. Keep **Terminal A logged in as dwei** for administrator
+tasks and use **Terminal B as demo** for installation and operation. The existing
+`/home/dwei/unitree_g1_dev` checkout does not need to be cloned again. The separate
+checkouts under `/home/demo` belong to demo; system packages are shared.
+
+## 1. Terminal A: dwei — directory /home/dwei
 
 Run once to create the account (omit `adduser` if it already exists):
 
 ```bash
+cd /home/dwei
 sudo adduser demo
 sudo usermod -aG video,dialout demo
 ```
+
+## 2. Terminal A: dwei — directory /home/dwei/unitree_g1_dev/pc2/vr_teleops
 
 Run this block from `dwei`. It uses the ROS distribution in the existing hardware
 profile. ROS APT sources must already be configured, as on this provisioned PC2.
 
 ```bash
+cd /home/dwei/unitree_g1_dev/pc2/vr_teleops
 bash <<'ADMIN'
 set -euo pipefail
 cd /home/dwei/unitree_g1_dev/pc2/vr_teleops
@@ -45,58 +54,57 @@ If the adapter identifiers differ, an administrator must correct the rule.
 Native RealSense additionally requires appropriate USB permissions; this guide
 uses the checked-in OpenCV camera configuration on this PC2.
 
-## 2. Account: demo — clone the repositories
+## 3. Terminal B: switch from dwei to demo — directory /home/dwei
 
-From `dwei`, enter a fresh login for `demo`:
+Open another PC2 terminal as `dwei`. Enter a fresh login for `demo`:
 
 ```bash
+cd /home/dwei
 sudo -iu demo
 ```
 
-The following commands now run as `demo`:
+Terminal B is now logged in as `demo`, in `/home/demo`. Leave Terminal A as `dwei`.
+
+## 4. Terminal B: demo — directory /home/demo
 
 ```bash
+cd /home/demo
 whoami
 id -nG
-cd ~
 git clone https://github.com/MoissanClub/unitree_g1_dev.git
 git clone --recurse-submodules https://github.com/MoissanClub/xr_teleoperate.git
-exit
 ```
 
 Expect `whoami` to print `demo`, with `video` and `dialout` in the group list.
-`exit` returns to `dwei`. Do not rerun clone over an existing checkout.
-
-## 3. Account: dwei — copy the local changes before they are published
-
-The new user-only mode may not yet be on GitHub. Copy these launcher/setup files
-from the modified local checkout into the fresh demo checkout. Once the same
-changes are published and cloned, this copy is unnecessary.
+Do not rerun clone over an existing checkout. If the launcher repository already
+exists and is clean, update it instead (Terminal B, demo):
 
 ```bash
-cd /home/dwei/unitree_g1_dev/pc2/vr_teleops
-sudo install -o demo -g demo -m 0755 \
-  setup_pc2_xr_teleop.sh common_teleop_env.sh demo.sh start_brainco_hand_server.sh \
-  /home/demo/unitree_g1_dev/pc2/vr_teleops/
-sudo install -o demo -g demo -m 0644 ../g1_pc2_hardware.env \
+cd /home/demo/unitree_g1_dev
+git pull --ff-only
+```
+
+## 5. Terminal A: dwei — directory /home/dwei/unitree_g1_dev/pc2
+
+The user-only changes are published on GitHub; no script copying is needed.
+Copy this PC2's verified hardware profile into the new demo checkout:
+
+```bash
+cd /home/dwei/unitree_g1_dev/pc2
+sudo install -o demo -g demo -m 0644 g1_pc2_hardware.env \
   /home/demo/unitree_g1_dev/pc2/g1_pc2_hardware.env
 ```
 
 The copied hardware profile uses `$HOME` for checkout locations, so those paths
 resolve under `/home/demo` when sourced by `demo`.
 
-## 4. Account: demo — install its environment without sudo
+## 6. Terminal B: demo — directory /home/demo/unitree_g1_dev/pc2/vr_teleops
 
-From `dwei`:
-
-```bash
-sudo -iu demo
-```
-
-Then as `demo`:
+Install demo's environment. If the camera is occupied, resolve the conflict
+using step 8 first.
 
 ```bash
-cd ~/unitree_g1_dev/pc2/vr_teleops
+cd /home/demo/unitree_g1_dev/pc2/vr_teleops
 bash setup_pc2_xr_teleop.sh --user-only --no-pull --input-mode hand --ee brainco
 ```
 
@@ -108,17 +116,18 @@ existing checkout revisions but still clones missing repositories and
 initializes pinned submodules. The administrator prerequisites must be present;
 the installer will not request sudo to repair them.
 
-## 5. Account: demo — check the generated configuration
+## 7. Terminal B: demo — directory /home/demo/unitree_g1_dev/pc2/vr_teleops
 
 ```bash
-grep '^export G1_TELEOP_PRIVILEGE_MODE=' ~/.config/xr_teleoperate/pc2_teleop.env
+cd /home/demo/unitree_g1_dev/pc2/vr_teleops
+grep '^export G1_TELEOP_PRIVILEGE_MODE=' /home/demo/.config/xr_teleoperate/pc2_teleop.env
 bash demo.sh --help
 ```
 
 Expect `export G1_TELEOP_PRIVILEGE_MODE="user"`. The installer also checks Python
 imports and native library linkage. These checks do not prove hardware operation.
 
-## 6. Account: dwei — resolve existing sessions if needed
+## 8. Terminal A: dwei — directory /home/dwei — optional camera conflict resolution
 
 Stop any previous teleoperation session using Ctrl+C in its owning terminal.
 The demo launcher will not kill another account's hand/camera processes.
@@ -126,6 +135,7 @@ If Unitree's vendor camera services are still holding the camera, the following
 commands deliberately stop those two services for the session:
 
 ```bash
+cd /home/dwei
 sudo /unitree/sbin/mscli stopservice video_hub_pc4
 sudo /unitree/sbin/mscli stopservice video_hub_pc4_chest
 ```
@@ -134,12 +144,12 @@ Only use these if that camera conflict exists. They do not stop `ota_pipe` or
 permanently remove service definitions. Handle other resource owners explicitly;
 do not kill every camera/port holder indiscriminately.
 
-## 7. Account: demo — launch the hardware session
+## 9. Terminal B: demo — directory /home/demo/unitree_g1_dev/pc2/vr_teleops
 
 With the robot physically prepared for teleoperation, in a `demo` login:
 
 ```bash
-cd ~/unitree_g1_dev/pc2/vr_teleops
+cd /home/demo/unitree_g1_dev/pc2/vr_teleops
 bash demo.sh --hand
 ```
 
