@@ -30,6 +30,17 @@ process_alive() {
   [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null
 }
 
+process_is_self_or_descendant() {
+  local pid="$1"
+  local ancestor="$$"
+  local parent="${pid}"
+  while [[ "${parent}" =~ ^[0-9]+$ && "${parent}" -gt 1 ]]; do
+    [[ "${parent}" -ne "${ancestor}" ]] || return 0
+    parent="$(ps -p "${parent}" -o ppid= 2>/dev/null | tr -d ' ' || true)"
+  done
+  return 1
+}
+
 find_account_session_pids() {
   local lock_file="$1"
   local pid=""
@@ -46,7 +57,7 @@ find_account_session_pids() {
 
   printf '%s\n' "${candidates[@]}" | sort -un | while IFS= read -r pid; do
     [[ "${pid}" =~ ^[0-9]+$ ]] || continue
-    [[ "${pid}" -ne "$$" && "${pid}" -ne "${PPID}" ]] || continue
+    process_is_self_or_descendant "${pid}" && continue
     process_alive "${pid}" && printf '%s\n' "${pid}"
   done
 }
@@ -199,8 +210,10 @@ main() {
       teleop_die "A teleoperation session is already running for this account (lock owner PID unavailable)."
     fi
     printf '%s\n' "$$" > "${session_lock}"
-    if pgrep -f '(^|/)(brainco_hand_server|start_brainco_hand_server\.sh|teleimager-server|start_teleimager\.sh)( |$)' >/dev/null; then
-      teleop_die "A hand/camera service is already running. Stop its owning session before launching; ask its owner or an administrator if needed."
+    local -a service_pids=()
+    mapfile -t service_pids < <(pgrep -f '(^|/)(brainco_hand_server|start_brainco_hand_server\.sh|teleimager-server|start_teleimager\.sh)( |$)' || true)
+    if ((${#service_pids[@]} > 0)); then
+      teleop_die "A hand/camera service is already running (PIDs: ${service_pids[*]}). Stop its owning session before launching; ask its owner or an administrator if needed."
     fi
     if ss -H -ltnu | awk '$5 ~ /:(60000|60001|55555)$/ { found = 1 } END { exit(found ? 0 : 1) }'; then
       teleop_die "A camera endpoint is occupied. Stop its owning session before launching."
@@ -229,18 +242,18 @@ main() {
   fi
 
   stdbuf -oL -eL "${SCRIPT_DIR}/start_brainco_hand_server.sh" \
-    > >(tee "${brainco_log}") 2>&1 &
+    > >(tee "${brainco_log}" 9>&-) 2>&1 9>&- &
   brainco_pid=$!
   wait_for_log "BrainCo hand server" "${brainco_pid}" "${brainco_log}" \
     "Both BrainCo hands are online." "${brainco_timeout}"
 
   stdbuf -oL -eL "${SCRIPT_DIR}/start_teleimager.sh" \
-    > >(tee "${teleimager_log}") 2>&1 &
+    > >(tee "${teleimager_log}" 9>&-) 2>&1 9>&- &
   teleimager_pid=$!
   wait_for_camera "${teleimager_pid}" "${teleimager_log}" "${camera_timeout}"
 
   teleop_log "Starting XR teleoperation. Background services will stop when XR exits."
-  "${SCRIPT_DIR}/start_xr_teleoperate.sh" "$@"
+  "${SCRIPT_DIR}/start_xr_teleoperate.sh" "$@" 9>&-
 }
 
 main "$@"

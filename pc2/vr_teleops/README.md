@@ -54,7 +54,9 @@ workspace with `--skip-deps --no-test`. It writes
 without sudo, disables teleimager's UVC driver reload, and uses a per-user
 session lock. It refuses existing hand/camera services rather than terminating
 other sessions and reports the active session process IDs when the lock is
-occupied. Camera ownership and vendor-service conflicts need to be
+occupied. Only the supervisor retains the lock; its child services close the
+lock descriptor so an orphan cannot keep a later session blocked. Camera
+ownership and vendor-service conflicts need to be
 resolved by their owner or an administrator before launch. The default setup
 and runtime privilege mode remains unchanged for existing accounts.
 
