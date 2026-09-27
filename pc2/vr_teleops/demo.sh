@@ -30,6 +30,27 @@ process_alive() {
   [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null
 }
 
+find_account_session_pids() {
+  local lock_file="$1"
+  local pid=""
+  local -a candidates=()
+
+  if [[ -r "${lock_file}" ]]; then
+    while IFS= read -r pid; do
+      [[ "${pid}" =~ ^[0-9]+$ ]] && candidates+=("${pid}")
+    done < "${lock_file}"
+  fi
+  while IFS= read -r pid; do
+    [[ "${pid}" =~ ^[0-9]+$ ]] && candidates+=("${pid}")
+  done < <(pgrep -u "$(id -u)" -f '(^|[ /])demo\.sh( |$)' || true)
+
+  printf '%s\n' "${candidates[@]}" | sort -un | while IFS= read -r pid; do
+    [[ "${pid}" =~ ^[0-9]+$ ]] || continue
+    [[ "${pid}" -ne "$$" && "${pid}" -ne "${PPID}" ]] || continue
+    process_alive "${pid}" && printf '%s\n' "${pid}"
+  done
+}
+
 find_stale_service_pids() {
   local pid=""
   local cmd=""
@@ -167,8 +188,17 @@ main() {
     [[ "${EUID}" -ne 0 ]] || teleop_die "Run this session as the demo/login user, not root."
     command -v flock >/dev/null 2>&1 || teleop_die "Missing flock (util-linux)."
     mkdir -p "${HOME}/.cache/xr_teleoperate"
-    exec 9>"${HOME}/.cache/xr_teleoperate/session.lock"
-    flock -n 9 || teleop_die "A teleoperation session is already running for this account."
+    local session_lock="${HOME}/.cache/xr_teleoperate/session.lock"
+    exec 9>>"${session_lock}"
+    if ! flock -n 9; then
+      local -a session_pids=()
+      mapfile -t session_pids < <(find_account_session_pids "${session_lock}")
+      if ((${#session_pids[@]} > 0)); then
+        teleop_die "A teleoperation session is already running for this account (PIDs: ${session_pids[*]})."
+      fi
+      teleop_die "A teleoperation session is already running for this account (lock owner PID unavailable)."
+    fi
+    printf '%s\n' "$$" > "${session_lock}"
     if pgrep -f '(^|/)(brainco_hand_server|start_brainco_hand_server\.sh|teleimager-server|start_teleimager\.sh)( |$)' >/dev/null; then
       teleop_die "A hand/camera service is already running. Stop its owning session before launching; ask its owner or an administrator if needed."
     fi

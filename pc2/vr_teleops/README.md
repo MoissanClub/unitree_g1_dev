@@ -53,7 +53,8 @@ workspace with `--skip-deps --no-test`. It writes
 `G1_TELEOP_PRIVILEGE_MODE=user` to the runtime config. This mode runs BrainCo
 without sudo, disables teleimager's UVC driver reload, and uses a per-user
 session lock. It refuses existing hand/camera services rather than terminating
-other sessions. Camera ownership and vendor-service conflicts need to be
+other sessions and reports the active session process IDs when the lock is
+occupied. Camera ownership and vendor-service conflicts need to be
 resolved by their owner or an administrator before launch. The default setup
 and runtime privilege mode remains unchanged for existing accounts.
 
