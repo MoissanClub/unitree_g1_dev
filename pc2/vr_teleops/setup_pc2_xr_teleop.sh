@@ -16,6 +16,7 @@ DEFAULT_UNITREE_ROS2_DIR="${G1_UNITREE_ROS2_DIR}"
 DEFAULT_CONFIG_DIR="${HOME}/.config/xr_teleoperate"
 TELEIMAGER_PATCH="${SCRIPT_DIR}/patches/teleimager-jetson-realsense.patch"
 TELEIMAGER_UVC_PATCH="${SCRIPT_DIR}/patches/teleimager-uvc-reload-race.patch"
+SDK2_PY_DDS_LOG_PATCH="${SCRIPT_DIR}/patches/unitree-sdk2-python-no-global-dds-log.patch"
 DEFAULT_DDS_IFACE="${G1_DDS_IFACE}"
 DEFAULT_WIFI_IFACE="${G1_WIFI_IFACE}"
 DEFAULT_VIDEO_ID="${G1_HEAD_CAMERA_VIDEO_ID}"
@@ -524,6 +525,17 @@ ensure_unitree_sdk2() {
 
 ensure_unitree_sdk2_python() {
   ensure_repo "https://github.com/unitreerobotics/unitree_sdk2_python.git" "${SDK2_PY_DIR}"
+  local channel_config="${SDK2_PY_DIR}/unitree_sdk2py/core/channel_config.py"
+  [[ -f "${channel_config}" ]] || die "Missing unitree_sdk2_python channel config at ${channel_config}."
+  [[ -f "${SDK2_PY_DDS_LOG_PATCH}" ]] || die "Missing local SDK2 Python DDS-log patch at ${SDK2_PY_DDS_LOG_PATCH}."
+  if ! grep -q '/tmp/cdds\.LOG' "${channel_config}"; then
+    log "Per-user-safe Unitree SDK2 Python DDS configuration is already applied."
+  elif git -C "${SDK2_PY_DIR}" apply --check "${SDK2_PY_DDS_LOG_PATCH}"; then
+    log "Removing the shared /tmp/cdds.LOG trace target from unitree_sdk2_python"
+    run git -C "${SDK2_PY_DIR}" apply "${SDK2_PY_DDS_LOG_PATCH}"
+  else
+    die "Local SDK2 Python DDS-log patch does not apply cleanly. Review ${SDK2_PY_DDS_LOG_PATCH} against the checked-out revision."
+  fi
   CYCLONEDDS_HOME="$(prepare_cyclonedds_home)" || die "CycloneDDS was not found in a Python-compatible layout under the Unitree workspace or /opt/ros/${G1_ROS_DISTRO:-humble}. The DDS setup step must succeed before sdk2_python install."
   export CYCLONEDDS_HOME
 

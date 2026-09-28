@@ -60,6 +60,12 @@ ownership and vendor-service conflicts need to be
 resolved by their owner or an administrator before launch. The default setup
 and runtime privilege mode remains unchanged for existing accounts.
 
+Setup also removes the SDK2 Python client's global `/tmp/cdds.LOG` trace
+target. The upstream fixed filename is incompatible with multiple Linux users:
+the first account creating it prevents another account from opening it for
+writing, which makes `ChannelFactoryInitialize` fail. DDS errors continue to
+appear on standard error without that optional configuration trace file.
+
 Run these scripts as follows:
 
 - `setup_pc2_xr_teleop.sh`: run as the normal login user, not with `sudo`

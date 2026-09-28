@@ -1,0 +1,14 @@
+diff --git a/unitree_sdk2py/core/channel_config.py b/unitree_sdk2py/core/channel_config.py
+index 3a856c2..672a09c 100644
+--- a/unitree_sdk2py/core/channel_config.py
++++ b/unitree_sdk2py/core/channel_config.py
+@@ -7,9 +7,5 @@ ChannelConfigHasInterface = '''<?xml version="1.0" encoding="UTF-8" ?>
+                 </Interfaces>
+             </General>
+-            <Tracing>
+-                <Verbosity>config</Verbosity>
+-            <OutputFile>/tmp/cdds.LOG</OutputFile>
+-        </Tracing>
+         </Domain>
+     </CycloneDDS>'''
+ 
