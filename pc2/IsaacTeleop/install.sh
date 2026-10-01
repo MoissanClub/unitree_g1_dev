@@ -153,6 +153,7 @@ if ! $dry_run; then
 fi
 run "$uv_bin" pip install --python "$venv/bin/python" \
     'isaacteleop[cloudxr,retargeters-lite]==1.4.145' 'numpy>=2,<2.3' 'scipy>=1.15,<1.17'
+run "$venv/bin/python" "$script_dir/patch_cloudxr_page.py"
 run "$venv/bin/python" "$script_dir/verify.py" --check-only
 if ! $dry_run; then
     printf '\nInstalled. Run a headset test after reviewing NVIDIA’s EULA:\n'

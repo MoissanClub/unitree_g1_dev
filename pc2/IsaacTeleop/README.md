@@ -111,13 +111,21 @@ The verifier uses the Wi-Fi address from the hardware profile/interface:
 
 1. In the Quest browser, open the certificate URL printed by the verifier
    (`https://<resolved-host-ip>:48322`) and accept the local certificate if prompted.
-2. Open <https://nvidia.github.io/IsaacTeleop/client>, enter the printed IP, and connect.
+2. Click **Open NVIDIA Isaac Teleop Client** on the certificate page, enter the
+   printed PC2 IP, and connect. No second URL needs to be typed in the headset.
 3. Enter VR, wear the headset, wake both controllers, and move them. The terminal
    prints tracking validity, controller positions, and trigger values.
 
+`install.sh` applies `patch_cloudxr_page.py` to the pinned package's certificate
+page. The patch adds a large link to <https://nvidia.github.io/IsaacTeleop/client>
+in the same tab, is safe to rerun, and refuses unknown package versions/templates.
+After installing this update, stop and restart `verify.py` and reload the
+certificate page. The patch changes only page content; certificate validation
+and WebSocket handling remain unchanged.
+
 Default profile: `Quest3`. Pass `--profile NAME` for another profile supported
-by the installed CloudXR release. `--duration 300` allows a longer connection
-window; the default is 120 seconds after OpenXR startup. SDK startup has its
+by the installed CloudXR release. `--duration 1200` allows a longer connection
+window; the default is 600 seconds (10 minutes) after OpenXR startup. SDK startup has its
 own timeout. Use Ctrl+C to stop early.
 
 The test exits successfully after 90 consecutive fresh frames with valid head

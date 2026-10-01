@@ -187,7 +187,7 @@ def main() -> int:
     mode.add_argument("--show-config", action="store_true", help="Show profile and resolved Wi-Fi IP without starting XR")
     parser.add_argument("--host-ip", help="Override profile G1_WIFI_IP or address detected on G1_WIFI_IFACE")
     parser.add_argument("--profile", default="Quest3", help="CloudXR headset profile (default: Quest3)")
-    parser.add_argument("--duration", type=float, default=120, help="Tracking timeout after XR startup, seconds")
+    parser.add_argument("--duration", type=float, default=600, help="Tracking timeout after XR startup, seconds (default: 600)")
     parser.add_argument("--accept-eula", action="store_true", help="Explicitly accept NVIDIA's CloudXR EULA")
     args = parser.parse_args()
     if not math.isfinite(args.duration) or args.duration <= 0:
