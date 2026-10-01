@@ -61,6 +61,74 @@ checks this selection instead of assuming that an ARM wheel proves runtime
 support. See NVIDIA's [CloudXR guide](https://nvidia.github.io/IsaacTeleop/release/1.4.x/references/cloudxr.html)
 and [release notes](https://github.com/NVIDIA/IsaacTeleop/issues/1065).
 
+## LeRobot integration and MuJoCo G1-29
+
+These are separate from the standalone `.venv` workflow:
+
+- `setup_lerobot.sh` installs the pinned Isaac Teleop extras into the existing
+  `lerobot-dev` environment, preserves its NumPy/SciPy versions, applies the
+  certificate-page patch there, and constructs LeRobot's full XR input pipeline.
+- `run_lerobot_mujoco.sh` starts the standard LeRobot CLI in **simulation only**.
+  `lerobot_env.sh` supplies the existing conda libraries, thread settings, and
+  Orin EGL preload at process startup. No global shell/driver changes are made.
+  On Orin, `--video` also selects `teleop.video_openxr_composition=false`:
+  NVIDIA documents that native OpenXR quad layers can appear black there.
+  This needs the matching LeRobot XR configuration option in the local branch.
+
+Prerequisites: the `~/lerobot` checkout on `work/g1-vr-teleoperate`, its existing
+`lerobot-dev` environment with Pinocchio/CasADi, MuJoCo, and LeRobot dependencies,
+and the GPU permissions verified by standalone `install.sh`. Override locations
+with `LEROBOT_DIR` and `LEROBOT_PYTHON`; `UV_BIN` selects uv for setup.
+
+```sh
+cd ~/unitree_g1_dev/pc2/IsaacTeleop
+bash setup_lerobot.sh --dry-run
+bash setup_lerobot.sh
+bash run_lerobot_mujoco.sh --replay
+```
+
+Stop the standalone verifier and any previous CloudXR session before live use:
+
+```sh
+bash run_lerobot_mujoco.sh --accept-eula --video
+```
+
+The launcher prints the certificate URL using the shared hardware profile.
+Use its pre-filled client button, choose **H.264**, connect, and enter VR. In the
+**laptop terminal** running the command, type `r` then Enter to start tracking,
+`p` then Enter to pause, and `q` then Enter to exit. Browser Play is not the
+LeRobot start command. Tracking loss pauses motion and requires another `r`.
+Move one controller at a time initially and keep sticks centered. Wrist mapping
+is absolute/head-relative, not a squeeze clutch. Hands are not actuated.
+
+Omit `--video` to test controllers without the headset camera. `--onscreen` adds
+a local MuJoCo window when a working local display is available. Each run creates
+a fresh directory under `~/.local/state/lerobot-g1-vr/` containing its config and
+`report.jsonl`; `LEROBOT_RUNS_DIR` overrides this. Asset preparation downloads
+pinned Hub snapshots on first use; `HF_HUB_OFFLINE=1` can reuse the cache afterward.
+The launcher offers no physical robot mode or motion-enabling flags.
+
+The tested `ssh -Y` connection could not create the onscreen GLX context
+(`BadValue`, followed by `could not create window`). A nonempty `DISPLAY` alone
+does not establish OpenGL support. Omit `--onscreen` to retain the working VR
+path. A browser camera viewer through an SSH tunnel is not implemented yet.
+
+PC2 integration checks on 2026-10-02: SDK/LeRobot pipeline construction passed;
+100-frame replay produced 100 enabled simulation actions and closed cleanly,
+with `motor_publication=false` and `base_rpc=false`. Four XR-input/CLI tests,
+eleven camera-channel/lifecycle tests, and the opt-in offscreen GPU video
+delivery/recovery test passed. Live CloudXR, shared XR input/video, and MuJoCo
+startup succeeded. The operator confirmed visible headset video and controller
+movement driving the simulated robot; detailed arm-mapping acceptance remains
+a separate test. Video-enabled simulation initially ran around
+20–24 Hz against a 50 Hz target; no real-time hardware performance is claimed.
+
+The current PyTorch build warns that general CUDA kernels do not support Orin
+SM 8.7; do not infer that GPU training works. The exact allocation/copy operations
+used by this camera path and its offscreen rendering test passed when the process
+had `render` group access. A stale SSH/agent session without that group instead
+reported CUDA initialization errors. No alternate GPU-array package is required.
+
 ## Check packages without starting XR
 
 ```sh
