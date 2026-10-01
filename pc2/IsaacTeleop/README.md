@@ -109,16 +109,28 @@ The verifier uses the Wi-Fi address from the hardware profile/interface:
 .venv/bin/python verify.py --headset --accept-eula
 ```
 
+On Jetson Orin/T234, `verify.py` automatically re-executes with the system
+`libEGL.so.1` in `LD_PRELOAD` before loading the SDK. This incorporates the
+workaround that passed the PC2 headset test described below. Existing preload
+entries are preserved; package/config checks and other platforms are unaffected.
+For diagnosis only, `ISAAC_TELEOP_PRELOAD_EGL=0` disables this workaround.
+
 1. In the Quest browser, open the certificate URL printed by the verifier
    (`https://<resolved-host-ip>:48322`) and accept the local certificate if prompted.
-2. Click **Open NVIDIA Isaac Teleop Client** on the certificate page, enter the
-   printed PC2 IP, and connect. No second URL needs to be typed in the headset.
+2. Click **Open NVIDIA Isaac Teleop Client** on the certificate page. The link
+   passes the certificate page's host IP and port as `serverIP` and `port` URL
+   parameters to pre-fill the client. Select **H.264** in the Video Codec dropdown
+   on Orin, then click **Connect**; no second URL or IP needs to be typed in the
+   headset. Dropdowns and buttons are sufficient for the remaining basic setup.
 3. Enter VR, wear the headset, wake both controllers, and move them. The terminal
    prints tracking validity, controller positions, and trigger values.
 
 `install.sh` applies `patch_cloudxr_page.py` to the pinned package's certificate
 page. The patch adds a large link to <https://nvidia.github.io/IsaacTeleop/client>
-in the same tab, is safe to rerun, and refuses unknown package versions/templates.
+in the same tab, is safe to rerun (including upgrading the older link without
+parameters), and refuses unknown package versions/templates. The link derives
+the address in the browser, so it follows the IP used to open the certificate
+page rather than hard-coding an address.
 After installing this update, stop and restart `verify.py` and reload the
 certificate page. The patch changes only page content; certificate validation
 and WebSocket handling remain unchanged.
@@ -135,11 +147,30 @@ there is no robot scene, camera streaming, or robot motion in this test.
 
 ## Troubleshooting and validation scope
 
+If the runtime disconnects when the headset connects, rerun with fault reporting:
+
+```sh
+PYTHONFAULTHANDLER=1 .venv/bin/python verify.py --headset --accept-eula
+```
+
+On a tracking exception, the verifier reports the runtime worker's exit code or
+signal before cleanup (or reports that it is still running). This does not need
+`strace`. Inspect `~/.cloudxr/logs/runtime_stderr.log` for fault output; an exit
+signal identifies how the process ended, not necessarily the underlying cause.
+
 - Missing module: use this folder's `.venv/bin/python`, not another interpreter.
 - Occupied port: the verifier checks TCP 48322 and 49100; stop the existing XR
   runtime yourself. It never kills another process.
 - Runtime fails: inspect `~/.cloudxr/logs`. The native runtime requires a working
   NVIDIA graphics/encoding stack; Python imports do not establish GPU support.
+- `Connection refused` on the certificate URL: installation alone does not run
+  the HTTPS proxy. Keep `verify.py --headset --accept-eula` running, and inspect
+  its terminal if it exits. The page disappears when the verifier stops.
+- Crash immediately on **Connect**, followed by `Broken pipe`,
+  `XR_ERROR_INSTANCE_LOST`, or browser `Server validation timeout`: the observed
+  PC2 failure was an EGL segmentation fault, not fixed by increasing timeout or
+  selecting H.264 alone. Ensure the Orin EGL preload message appears (or EGL is
+  already in `LD_PRELOAD`). See the diagnosis and evidence below.
 - `Missing required instance extensions` / `ERROR_INCOMPATIBLE_DRIVER`: rerun
   `bash install.sh`. On this PC2, a read-only trace showed `EACCES` opening
   `/dev/dri/renderD128` and `renderD129` because the login lacked `render` group
@@ -152,8 +183,94 @@ there is no robot scene, camera streaming, or robot motion in this test.
 - Orin selects stable CloudXR: remove an inherited `ISAAC_TELEOP_CLOUDXR_EXP=0`
   override and rerun the check.
 
-Development validation on PC2 (Jetson Orin NX, Ubuntu 22.04, L4T 36.4.3): an
-isolated Python 3.12 environment installed the pinned wheel and constructed the
-input graph without LeRobot or PyTorch. Live CloudXR startup and physical
-headset acceptance still require the test above; they have not been claimed
-as passing. `.venv`, Python caches, and local logs are excluded from Git.
+## PC2 installation and test record (2026-10-02)
+
+### Scope and environment
+
+The goal was a minimum standalone Quest-to-PC2 tracking test before integrating
+LeRobot, a MuJoCo G1-29 scene, or the physical robot. PC2 is the G1-29's Jetson
+Orin NX running Ubuntu 22.04 / L4T 36.4.3 (ARM64). During this test its Wi-Fi
+address was `192.168.0.201`; scripts resolve the address from the shared profile
+and interface rather than embedding that test address.
+
+The scripts were first created in `IsaacTeleop/` and moved under `pc2/IsaacTeleop/`
+in this repository. Installation uses a separate `.venv`, Python 3.12,
+Isaac Teleop 1.4.145, bundled CloudXR 6.3.0, and the NumPy/SciPy pins above.
+The tested venv used the Python interpreter from the existing `lerobot-dev`
+conda environment: package isolation does not imply an independent interpreter
+or native-library stack. No LeRobot import, robot SDK, or PyTorch is required
+for this verification. `--python` can select a different interpreter when
+creating a new environment.
+
+### Failures and resolutions
+
+1. **uv not on PATH:** the installer now discovers uv in common user and conda
+   locations, with `--uv` / `UV_BIN` overrides. Activation is optional.
+2. **Vulkan startup failure:** missing KHR instance-extension messages initially
+   obscured `EACCES` on GPU render devices. The user had `video` access but lacked
+   `render` membership. The installer adds missing groups, requests a new login,
+   and checks NVIDIA Vulkan support before proceeding. It does not replace
+   drivers or make GPU device nodes world-writable.
+3. **Headset setup took longer than the test window:** the tracking duration was
+   raised from 120 to 600 seconds after OpenXR startup. `--duration` controls
+   that window; the SDK's startup timeout is separate. The test still ends
+   early when its pass condition is met.
+4. **Typing URLs in VR was cumbersome:** the pinned-package patch adds a large
+   certificate-page button with `serverIP` and `port` query parameters derived
+   from the page address. Re-running the installer applies or upgrades the
+   patch; restart the verifier and reload the page afterward. Editing the patch
+   script alone does not change the installed page. Prefer no VR typing, then
+   laptop input, and only minimal headset typing when unavoidable.
+5. **Connect crashed the runtime:** both controllers stayed invalid before the
+   connection, then local OpenXR IPC reset and the browser reported a validation
+   timeout. H.264 alone did not resolve this. Fault reporting confirmed SIGSEGV;
+   a native debugger located the failing thread in system `libEGL.so.1`, called
+   from `__nptl_deallocate_tsd` during thread cleanup. The backtrace identifies
+   the crash location, not a proven underlying library defect.
+6. **EGL preload passed the test:** running the verifier with
+   `LD_PRELOAD=/lib/aarch64-linux-gnu/libEGL.so.1` avoided the Connect crash and
+   produced the tracking pass below. The verifier now applies this automatically
+   on Orin. The manual preload run was headset-tested; the automatic re-exec
+   path was checked separately without starting hardware.
+
+### Observed result and limits
+
+The user reported this result with H.264 and the explicit EGL preload:
+
+```text
+fresh=True tracking={'head': True, 'left': True, 'right': True} consecutive=77
+PASS: 90 consecutive fresh frames with head and both controllers tracked.
+```
+
+This confirms sustained valid headset and both-controller poses for the minimum
+test. `head=True` alone before connection was not a pass. Trigger values in the
+shared output were `0.00`, so button/trigger actuation was not established.
+The test does not validate long-running stability, reconnect/reset behavior,
+hand tracking, camera/video quality, retargeting, MuJoCo, or robot motion.
+Seeing browser controls or pressing Play/Reset is not itself a tracking pass.
+
+### Debugging without additional installs
+
+The verifier reports runtime process exit status before cleanup. Python fault
+reporting records native faults in `runtime_stderr.log`. When a native backtrace
+is needed, attach GDB to the **CloudXR worker**, not the verifier, before clicking
+Connect. Use the current PID each run. PC2 required a sudo attach. A missing
+`futex-internal.c` source file in GDB is harmless; it is not the crash cause.
+Store debugger logs in a dedicated directory: root opening an existing
+user-owned file directly under sticky `/tmp` caused a logging permission error
+in this investigation. No permanent ptrace or system permission changes were
+needed. Raw logs, TLS keys, environments, and caches are not checked into Git.
+
+### Upstream certificate-page contribution
+
+The certificate page belongs to the Isaac Teleop CloudXR integration. Upstream
+has renamed the repository to IsaacCapture. Draft
+[PR #1170](https://github.com/NVIDIA/IsaacCapture/pull/1170) adds an optional
+client button with pre-filled IP/port and manual server mode, preserves the
+return-to-another-client option, and supports local, configured, or versioned
+clients without forcing a redirect. It is separate from the EGL workaround.
+The local upstream checkout was moved from `/tmp/isaac-cert-pr` to
+`~/IsaacCapture`, branch `fix/cloudxr-certificate-client-link`, for iteration.
+Its 18 focused tests and upstream pre-commit checks passed; upstream headset
+validation and a broader lifecycle check requiring native extensions remain
+separate from the successful local patched-page test.

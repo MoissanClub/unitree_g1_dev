@@ -8,6 +8,8 @@ import ipaddress
 import json
 import math
 import os
+import re
+import signal
 import socket
 import shutil
 import subprocess
@@ -15,6 +17,25 @@ import sys
 import time
 from importlib.metadata import version
 from pathlib import Path
+
+
+def ensure_orin_egl_preload() -> None:
+    """Re-exec before SDK imports with the EGL preload tested on PC2 Orin."""
+    if os.environ.get("ISAAC_TELEOP_PRELOAD_EGL", "1") == "0":
+        return
+    compatible = Path("/proc/device-tree/compatible")
+    if not compatible.is_file() or b"tegra234" not in compatible.read_bytes():
+        return
+    egl = "/lib/aarch64-linux-gnu/libEGL.so.1"
+    if not Path(egl).is_file():
+        raise RuntimeError(f"Missing {egl}; inspect the JetPack EGL installation.")
+    previous = os.environ.get("LD_PRELOAD", "")
+    if egl in re.split(r"[\s:]+", previous):
+        return
+    env = os.environ.copy()
+    env["LD_PRELOAD"] = f"{egl} {previous}".strip()
+    print("Jetson Orin: restarting verifier with EGL preloaded for CloudXR.", flush=True)
+    os.execve(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]], env)
 
 
 def load_hardware_profile() -> dict[str, str]:
@@ -130,13 +151,14 @@ def headset_test(args: argparse.Namespace, pipeline) -> int:
             if probe.connect_ex(("127.0.0.1", port)) == 0:
                 raise RuntimeError(f"Port {port} is in use. Stop the existing XR runtime first.")
     print(f"In the Quest browser, open https://{args.host_ip}:48322 and accept the local certificate if prompted.")
-    print("Then open https://nvidia.github.io/IsaacTeleop/client and connect to " + args.host_ip)
+    print("Click Open NVIDIA Isaac Teleop Client on that page; the IP and port are pre-filled.")
+    print("Select H.264 in the client's Video Codec dropdown before clicking Connect.")
     print("Wear the headset, wake both controllers, move them, and press the triggers.")
     print("This checks tracking only: there is no MuJoCo view or robot connection. Ctrl+C stops it.", flush=True)
     consecutive = 0
     peak = 0
     # Reverse context order closes OpenXR before stopping CloudXR.
-    with CloudXRLauncher(device_profile=args.profile, accept_eula=args.accept_eula):
+    with CloudXRLauncher(device_profile=args.profile, accept_eula=args.accept_eula) as launcher:
         session = TeleopSession(TeleopSessionConfig(app_name="Standalone Quest verification", pipeline=pipeline))
         try:
             session.__enter__()
@@ -173,6 +195,23 @@ def headset_test(args: argparse.Namespace, pipeline) -> int:
                     print("PASS: 90 consecutive fresh frames with head and both controllers tracked.", flush=True)
                     return 0
                 time.sleep(1 / 90)
+        except Exception:
+            # Inspect before context teardown terminates the runtime itself.
+            proc = getattr(launcher, "_runtime_proc", None)
+            if proc is not None:
+                try:
+                    code = proc.wait(timeout=0.5)
+                except subprocess.TimeoutExpired:
+                    print("CloudXR diagnostic: runtime worker is still running before cleanup.", file=sys.stderr)
+                else:
+                    detail = f"exit code {code}"
+                    if code < 0:
+                        try:
+                            detail += f" ({signal.Signals(-code).name})"
+                        except ValueError:
+                            pass
+                    print(f"CloudXR diagnostic: runtime worker {detail} before cleanup.", file=sys.stderr)
+            raise
         finally:
             session.__exit__(*sys.exc_info())
     print(f"FAIL: no sustained head + dual-controller tracking before timeout (best {peak}/90 frames).")
@@ -196,6 +235,8 @@ def main() -> int:
         if not args.accept_eula:
             parser.error("--headset requires explicit --accept-eula after reviewing NVIDIA's EULA")
     try:
+        if args.headset:
+            ensure_orin_egl_preload()
         hardware = load_hardware_profile()
         print(f"Hardware profile: {hardware['path']}\nWi-Fi interface: {hardware['wifi_iface']}", flush=True)
         if args.headset or args.show_config:
