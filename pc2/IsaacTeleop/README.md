@@ -68,6 +68,8 @@ These are separate from the standalone `.venv` workflow:
 - `setup_lerobot.sh` installs the pinned Isaac Teleop extras into the existing
   `lerobot-dev` environment, preserves its NumPy/SciPy versions, applies the
   certificate-page patch there, and constructs LeRobot's full XR input pipeline.
+  It also installs the local Unitree Python SDK in editable mode and verifies
+  its native CRC library without opening DDS or sending commands.
 - `run_lerobot_mujoco.sh` starts the standard LeRobot CLI in **simulation only**.
   `lerobot_env.sh` supplies the existing conda libraries, thread settings, and
   Orin EGL preload at process startup. No global shell/driver changes are made.
@@ -79,6 +81,19 @@ Prerequisites: a `~/lerobot` checkout with `unitree_g1_motion` and XR video supp
 `lerobot-dev` environment with Pinocchio/CasADi, MuJoCo, and LeRobot dependencies,
 and the GPU permissions verified by standalone `install.sh`. Override locations
 with `LEROBOT_DIR` and `LEROBOT_PYTHON`; `UV_BIN` selects uv for setup.
+The Unitree SDK checkout defaults to `~/unitree_sdk2_python`; override it with
+`UNITREE_SDK2_PYTHON_DIR`. Keep that checkout in place: editable installation
+loads its code and native libraries directly. The SDK's ordinary wheel omits
+`utils/lib/crc_aarch64.so`, so an import-only check can pass while command CRC
+construction fails. Setup preserves existing SDK dependencies with `--no-deps`
+and checks native CRC against the SDK's Python reference. Rerun setup after
+replacing the SDK installation. This does not change the standalone `.venv`.
+
+To repeat only the CRC check from the configured LeRobot environment:
+
+```sh
+uv run --no-project --python "$HOME/miniforge3/envs/lerobot-dev/bin/python" verify_unitree_sdk.py
+```
 
 ```sh
 cd ~/unitree_g1_dev/pc2/IsaacTeleop
