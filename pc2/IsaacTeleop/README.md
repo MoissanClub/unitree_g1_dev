@@ -120,6 +120,57 @@ a video failure, but successful buffer allocation does not establish support for
 general CUDA computation or training. Verify camera delivery separately and
 ensure the process has `render` group access.
 
+## Physical robot camera in VR
+
+Use LeRobot discovery before selecting the camera:
+
+```sh
+conda activate lerobot-dev
+lerobot-find-cameras opencv
+```
+
+Inspect the captured images and update `G1_HEAD_CAMERA_BACKEND` and
+`G1_HEAD_CAMERA_VIDEO_ID` in `../g1_pc2_hardware.env` with the RGB device.
+For native RealSense discovery, use `lerobot-find-cameras realsense` and set
+`G1_HEAD_CAMERA_REALSENSE_SERIAL` with backend `realsense`. The D435i can expose
+several OpenCV nodes; select the color image, not an infrared/depth stream.
+Discovery uses LeRobot's existing tools. The launcher reads the saved selection
+and never silently selects another camera. Recheck it after USB changes.
+
+```sh
+bash run_lerobot_camera.sh --accept-eula
+```
+
+This invokes `lerobot-teleoperate` with `robot.type=unitree_g1_motion`,
+`robot.mode=camera`, a standard `robot.cameras` dictionary, and
+`teleop.type=xr_controllers`. It requires the camera-mode implementation in the
+LeRobot checkout. Capture is mono RGB at 640×480, 30 FPS, through LeRobot's camera
+factory. No simulation assets, joint feedback, motor publisher, or locomotion
+client is opened. Do not start the whole-body robot server for this test.
+
+Stop other applications using the camera or CloudXR first. Follow the printed
+certificate URL and client button, select H.264, then Connect and Play. Video
+starts without `r`; controllers do not move the robot. `q` then Enter or Ctrl+C
+exits. A camera timeout produces an unavailable placeholder rather than an old
+image labeled live; removal may require restarting. Check color, orientation,
+responsiveness, and the actual scene in VR.
+
+For the direct CLI workflow, load the PC2 environment and prepare a config:
+
+```sh
+python_bin="$HOME/miniforge3/envs/lerobot-dev/bin/python"
+lerobot_dir="$HOME/lerobot"
+source ~/unitree_g1_dev/pc2/IsaacTeleop/lerobot_env.sh
+lerobot_environment
+bash ~/unitree_g1_dev/pc2/IsaacTeleop/run_lerobot_camera.sh --accept-eula --prepare-only
+```
+
+Run the printed `lerobot-teleoperate --config_path=...` command in that terminal.
+The generated JSON exposes the standard camera and XR options for review or CLI
+overrides. The default run has no duration limit; `--duration-s 600` sets a
+10-minute review window. Config and frame-publication reports are stored under
+`~/.local/state/lerobot-g1-vr/camera-*`. These reports do not verify headset viewing.
+
 ## Check packages without starting XR
 
 ```sh

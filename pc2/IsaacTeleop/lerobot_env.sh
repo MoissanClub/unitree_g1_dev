@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Shared PC2 environment; sourced only by the two LeRobot scripts.
+# Shared PC2 environment; shared by the LeRobot launchers and direct CLI sessions.
 lerobot_environment() {
     [[ -x "$python_bin" ]] || { echo "Python not found: $python_bin. Set LEROBOT_PYTHON." >&2; return 2; }
     [[ -f "$lerobot_dir/src/lerobot/teleoperators/xr_controllers/xr_controllers.py" ]] || {
-        echo "Use the work/g1-vr-teleoperate checkout via LEROBOT_DIR." >&2; return 2;
+        echo "Set LEROBOT_DIR to a checkout with G1 XR support." >&2; return 2;
     }
     lerobot_dir=$(cd -- "$lerobot_dir" && pwd)
     local prefix
