@@ -16,7 +16,7 @@ for node in /sys/class/video4linux/video*; do echo "$node: $(cat "$node/name")";
 udevadm info --query=property --name=/dev/ttyUSB0
 ```
 
-Every installation script loads this profile through `load_g1_pc2_hardware.sh`. To test a different profile without editing the checked-in file, set `G1_HARDWARE_CONFIG_FILE=/absolute/path/to/another.env`. Individual command-line flags still override profile values for one-off recovery or rewiring tests.
+Every installation script loads this profile through `load_g1_pc2_hardware.sh`. The loader can also be sourced directly in Bash or zsh, from any working directory. To test a different profile without editing the checked-in file, set `G1_HARDWARE_CONFIG_FILE=/absolute/path/to/another.env`. Individual command-line flags still override profile values for one-off recovery or rewiring tests.
 
 These scripts are meant to be run once, or only when you are intentionally
 re-provisioning `g1-pc2`. They are not meant to be part of normal day-to-day

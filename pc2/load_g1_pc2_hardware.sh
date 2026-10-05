@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Shared loader for the repo's PC2 hardware profile. Source this file; do not execute it.
+# Shared PC2 hardware profile loader for Bash and zsh. Source; do not execute.
 
-_g1_loader_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  _g1_loader_file="${(%):-%x}"
+else
+  _g1_loader_file="${BASH_SOURCE[0]}"
+fi
+_g1_loader_dir="$(cd "$(dirname "${_g1_loader_file}")" && pwd)"
 G1_HARDWARE_CONFIG_FILE="${G1_HARDWARE_CONFIG_FILE:-${_g1_loader_dir}/g1_pc2_hardware.env}"
 
 if [[ ! -r "${G1_HARDWARE_CONFIG_FILE}" ]]; then
@@ -23,7 +28,12 @@ _g1_required=(
   G1_ROS_DISTRO G1_ROBOT_DOF G1_UNITREE_ROS2_DIR G1_UNITREE_SDK2_DIR
 )
 for _g1_name in "${_g1_required[@]}"; do
-  if [[ -z "${!_g1_name-}" ]]; then
+  if [[ -n "${ZSH_VERSION:-}" ]]; then
+    _g1_value="${(P)_g1_name}"
+  else
+    _g1_value="${!_g1_name-}"
+  fi
+  if [[ -z "${_g1_value}" ]]; then
     printf '[ERROR] Required value %s is empty in %s.\n' "${_g1_name}" "${G1_HARDWARE_CONFIG_FILE}" >&2
     return 1 2>/dev/null || exit 1
   fi
@@ -53,5 +63,5 @@ if [[ "${G1_ROBOT_DOF}" != "23" && "${G1_ROBOT_DOF}" != "29" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-unset _g1_required _g1_name
-unset _g1_loader_dir
+unset _g1_required _g1_name _g1_value
+unset _g1_loader_dir _g1_loader_file
