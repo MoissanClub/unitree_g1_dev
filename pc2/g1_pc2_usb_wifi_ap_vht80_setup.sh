@@ -81,10 +81,11 @@ if [[ "$SKIP_APT" -eq 0 ]]; then
   apt-get install -y hostapd dnsmasq-base iw iptables
 fi
 
-for cmd in hostapd dnsmasq iw iptables ip nmcli wpa_passphrase systemctl; do
+for cmd in hostapd dnsmasq iw iptables ip nmcli wpa_passphrase systemctl systemd-escape; do
   command -v "$cmd" >/dev/null 2>&1 || die "Missing command: $cmd"
 done
 
+DEVICE_UNIT="$(systemd-escape --path --suffix=device "/sys/subsystem/net/devices/$IFACE")"
 PHY="$(iw dev "$IFACE" info | awk '/wiphy/ {print "phy" $2; exit}')"
 [[ -n "$PHY" ]] || die "Could not determine phy for $IFACE"
 PHY_INFO="$(iw phy "$PHY" info)"
@@ -257,7 +258,8 @@ chmod 0755 "$RUNNER"
 cat > "$SERVICE" <<EOF
 [Unit]
 Description=Unitree G1 PC2 USB Wi-Fi VHT80 access point
-After=NetworkManager.service systemd-modules-load.service
+BindsTo=$DEVICE_UNIT
+After=$DEVICE_UNIT NetworkManager.service systemd-modules-load.service
 Wants=NetworkManager.service
 StartLimitIntervalSec=0
 
@@ -267,9 +269,10 @@ ExecStart=$RUNNER
 Restart=on-failure
 RestartSec=2
 KillMode=control-group
+TimeoutStopSec=15
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=$DEVICE_UNIT
 EOF
 chmod 0644 "$SERVICE"
 
@@ -279,6 +282,8 @@ nmcli connection down "$OLD_CONNECTION" >/dev/null 2>&1 || true
 nmcli connection modify "$OLD_CONNECTION" connection.autoconnect no >/dev/null 2>&1 || true
 nmcli device set "$IFACE" managed no || true
 
+# Remove the old multi-user.target link before enabling device activation.
+systemctl disable --now g1-pc2-usb-wifi-ap-vht80.service
 systemctl daemon-reload
 systemctl enable g1-pc2-usb-wifi-ap-vht80.service
 systemctl restart g1-pc2-usb-wifi-ap-vht80.service

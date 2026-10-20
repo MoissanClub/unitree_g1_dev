@@ -255,6 +255,11 @@ sudo ./g1_pc2_usb_wifi_ap_vht80_setup.sh \
 This makes only the named USB interface unmanaged by NetworkManager, assigns
 it `10.42.0.1/24`, runs DHCP with `dnsmasq`, and NATs clients through PC2's
 existing default route. The built-in Wi-Fi remains managed as the uplink.
+The AP service starts when the named interface appears (including at boot)
+and stops when it disappears. With the dongle unplugged, the service stays
+inactive instead of repeatedly failing and restarting. Failures while the
+interface is present still trigger automatic restart. Startup waits until
+60 seconds after boot to allow USB initialization to settle.
 Verify the live radio and service with:
 
 ```bash
@@ -262,6 +267,17 @@ iw dev wlx40a5ef5c63e8 info
 systemctl status g1-pc2-usb-wifi-ap-vht80.service
 ip route get 8.8.8.8
 ```
+
+To verify device activation on PC2, unplug the dongle and run:
+
+```bash
+sudo bash tests/test_usb_ap_hotplug.sh wlx40a5ef5c63e8
+```
+
+The test temporarily replaces the AP runner with a sleep process and creates
+a virtual TAP interface with the configured name. It checks two add/remove
+cycles and no retries while absent, then removes the override and interface.
+This checks systemd activation, not Wi-Fi radio or client connectivity.
 
 ## Optional: Install Boot-Time Clock Sync
 
