@@ -275,6 +275,14 @@ teleop process uses:
 - XR hand-joint retargeting for BrainCo finger commands
 - the same DDS interface configured for the rest of the PC2 teleop stack
 
+BrainCo state feedback is allowed two seconds to become ready during XR
+startup. If feedback is late or unavailable, XR continues into its normal input
+loop so Quest A/B and terminal controls remain responsive; the feedback
+subscriber keeps waiting in the background. A single warning is printed instead
+of an unbounded stream of `Waiting to subscribe dds` messages. Hand commands
+still use the configured DDS interface, while recorded hand-state values remain
+at their initial values until feedback arrives.
+
 ## Runtime Configuration
 
 The launchers read:

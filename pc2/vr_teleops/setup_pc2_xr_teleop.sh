@@ -17,6 +17,7 @@ DEFAULT_CONFIG_DIR="${HOME}/.config/xr_teleoperate"
 TELEIMAGER_PATCH="${SCRIPT_DIR}/patches/teleimager-jetson-realsense.patch"
 TELEIMAGER_UVC_PATCH="${SCRIPT_DIR}/patches/teleimager-uvc-reload-race.patch"
 SDK2_PY_DDS_LOG_PATCH="${SCRIPT_DIR}/patches/unitree-sdk2-python-no-global-dds-log.patch"
+XR_BRAINCO_STARTUP_PATCH="${SCRIPT_DIR}/patches/xr-brainco-nonblocking-startup.patch"
 DEFAULT_DDS_IFACE="${G1_DDS_IFACE}"
 DEFAULT_WIFI_IFACE="${G1_WIFI_IFACE}"
 DEFAULT_VIDEO_ID="${G1_HEAD_CAMERA_VIDEO_ID}"
@@ -595,8 +596,27 @@ prepare_xr_sources() {
   done
 }
 
+apply_xr_brainco_startup_patch() {
+  local brainco_controller="${XR_REPO_DIR}/teleop/robot_control/robot_hand_brainco.py"
+
+  [[ -f "${brainco_controller}" ]] || die "Missing XR BrainCo controller at ${brainco_controller}."
+  [[ -f "${XR_BRAINCO_STARTUP_PATCH}" ]] || die "Missing local XR BrainCo startup patch at ${XR_BRAINCO_STARTUP_PATCH}."
+
+  if grep -q 'continuing startup so XR controls remain responsive' "${brainco_controller}"; then
+    log "Non-blocking XR BrainCo startup fix is already applied."
+  elif git -C "${XR_REPO_DIR}" apply --check "${XR_BRAINCO_STARTUP_PATCH}"; then
+    log "Applying non-blocking XR BrainCo startup fix"
+    run git -C "${XR_REPO_DIR}" apply "${XR_BRAINCO_STARTUP_PATCH}"
+  elif git -C "${XR_REPO_DIR}" apply --reverse --check "${XR_BRAINCO_STARTUP_PATCH}"; then
+    log "Non-blocking XR BrainCo startup fix is already applied."
+  else
+    die "Local XR BrainCo startup patch does not apply cleanly. Review ${XR_BRAINCO_STARTUP_PATCH} against the checked-out revision."
+  fi
+}
+
 ensure_xr_teleoperate() {
 
+  apply_xr_brainco_startup_patch
   apply_teleimager_patch
   # Disable the vendor's sudo/modprobe fallback for unprivileged sessions,
   # including when no camera nodes exist. Keep the change idempotent.
