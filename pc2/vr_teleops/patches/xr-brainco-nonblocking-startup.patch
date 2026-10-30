@@ -1,0 +1,46 @@
+diff --git a/teleop/robot_control/robot_hand_brainco.py b/teleop/robot_control/robot_hand_brainco.py
+--- a/teleop/robot_control/robot_hand_brainco.py
++++ b/teleop/robot_control/robot_hand_brainco.py
+@@ -53,10 +53,18 @@ class Brainco_Controller_ctrl:
+         self.subscribe_state_thread.daemon = True
+         self.subscribe_state_thread.start()
+ 
+-        while not self.hand_sub_ready:
++        # State feedback is useful for recording, but it must not block the
++        # main XR process from reaching its controller-button polling loop.
++        # Keep the subscriber alive so feedback can become ready later.
++        wait_deadline = time.monotonic() + 2.0
++        while not self.hand_sub_ready and time.monotonic() < wait_deadline:
+             time.sleep(0.1)
+-            logger_mp.warning("[Brainco_Controller_ctrl] Waiting to subscribe dds...")
+-        logger_mp.info("[Brainco_Controller_ctrl] Subscribe dds ok.")
++        if self.hand_sub_ready:
++            logger_mp.info("[Brainco_Controller_ctrl] Subscribe dds ok.")
++        else:
++            logger_mp.warning("[Brainco_Controller_ctrl] BrainCo state feedback is not available yet; "
++                              "continuing startup so XR controls remain responsive. The DDS subscriber "
++                              "will keep waiting in the background.")
+ 
+         hand_control_process = Process(target=self.control_process, args=(left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in, 
+                                                                           self.left_hand_state_array, self.right_hand_state_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array,
+@@ -204,10 +212,17 @@ class Brainco_Controller_hand:
+         self.subscribe_state_thread.daemon = True
+         self.subscribe_state_thread.start()
+ 
+-        while not self.hand_sub_ready:
++        # Do not make all XR input wait indefinitely for optional hand-state
++        # feedback. The daemon subscriber continues to wait after startup.
++        wait_deadline = time.monotonic() + 2.0
++        while not self.hand_sub_ready and time.monotonic() < wait_deadline:
+             time.sleep(0.1)
+-            logger_mp.warning("[Brainco_Controller_hand] Waiting to subscribe dds...")
+-        logger_mp.info("[Brainco_Controller_hand] Subscribe dds ok.")
++        if self.hand_sub_ready:
++            logger_mp.info("[Brainco_Controller_hand] Subscribe dds ok.")
++        else:
++            logger_mp.warning("[Brainco_Controller_hand] BrainCo state feedback is not available yet; "
++                              "continuing startup so XR controls remain responsive. The DDS subscriber "
++                              "will keep waiting in the background.")
+ 
+         hand_control_process = Process(target=self.control_process, args=(left_hand_array, right_hand_array,  self.left_hand_state_array, self.right_hand_state_array,
+                                                                           dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, xr_motion_data_ready_in))
